@@ -12,7 +12,8 @@ pub struct GroupsWidget {}
 impl GroupsWidget {
     pub fn render(app: &App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
         let block = block::new(" Groups ");
-        let titles = app
+
+        let mut titles: Vec<Spans> = app
             .scs
             .groups
             .iter()
@@ -24,9 +25,13 @@ impl GroupsWidget {
             })
             .collect();
 
+        if app.selected_group < titles.len() {
+            titles.rotate_left(app.selected_group);
+        }
+
         let tabs = Tabs::new(titles)
             .block(block)
-            .select(app.selected_group)
+            .select(0)
             .highlight_style(
                 Style::default()
                     .add_modifier(Modifier::BOLD)
