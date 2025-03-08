@@ -33,9 +33,9 @@ impl HostsWidget {
             .style(Style::default().fg(THEME.text_secondary()))
             .highlight_symbol(">> ")
             .widths(&[
+                Constraint::Percentage(50),
                 Constraint::Percentage(30),
-                Constraint::Percentage(40),
-                Constraint::Percentage(30),
+                Constraint::Percentage(20),
             ]);
 
         frame.render_stateful_widget(t, area, &mut app.host_state);
