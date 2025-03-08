@@ -63,13 +63,33 @@ impl ConfigWidget {
     fn ssh_group_item_to_spans(config: &SshGroupItem) -> Vec<Spans> {
         let mut spans = Vec::new();
 
-        spans.push(Spans::from(vec![
-            Span::styled("Host ", Style::default().fg(THEME.text_primary())),
-            Span::styled(
-                &config.full_name,
-                Style::default().fg(THEME.text_secondary()),
-            ),
-        ]));
+        if config.full_name.contains('/') {
+            let parts: Vec<&str> = config.full_name.split('/').collect();
+            if parts.len() >= 2 {
+                spans.push(Spans::from(vec![
+                    Span::styled("Host ", Style::default().fg(THEME.text_primary())),
+                    Span::styled(
+                        parts[1],
+                        Style::default().fg(THEME.text_secondary()),
+                    ),
+                ]));
+                spans.push(Spans::from(vec![
+                    Span::styled("  Group ", Style::default().fg(THEME.text_primary())),
+                    Span::styled(
+                        parts[0].replace('_', " "),
+                        Style::default().fg(THEME.text_secondary()),
+                    ),
+                ]));
+            }
+        } else {
+            spans.push(Spans::from(vec![
+                Span::styled("Host ", Style::default().fg(THEME.text_primary())),
+                Span::styled(
+                    &config.full_name,
+                    Style::default().fg(THEME.text_secondary()),
+                ),
+            ]));
+        }
 
         config.host_config.iter().for_each(|(key, value)| {
             spans.push(Spans::from(vec![
