@@ -44,6 +44,12 @@ fn handle_input_normal_mode(app: &mut App, key: KeyCode) {
         KeyCode::Char('h') => app.show_help = !app.show_help,
         KeyCode::Char('s') => app.state = AppState::Searching,
         KeyCode::Char('q') => app.should_quit = true,
+        KeyCode::Char('k') => {
+            if app.get_selected_item().is_some() {
+                app.should_copy_ssh_key = true;
+                app.should_quit = true;
+            }
+        }
         _ => {}
     }
 }

@@ -19,6 +19,7 @@ impl ShortcutsWidget {
 
         let text = vec![
             Spans::from("'Enter': Validate"),
+            Spans::from("'k': Copy SSH Key to Host"),
             Spans::from("'BackTab/Tab': Change Group"),
             Spans::from("'Left/Right': Change Group"),
             Spans::from("'c': Configuration Display Mode"),
