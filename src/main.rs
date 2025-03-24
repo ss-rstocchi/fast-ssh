@@ -13,7 +13,6 @@ mod term;
 mod theme;
 mod widgets;
 
-use anyhow::format_err;
 use app::*;
 use config::*;
 use input_handler::*;
@@ -84,28 +83,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .arg(host_name.split(' ').take(1).collect::<Vec<&str>>().join(""))
             .spawn()?
             .wait()?;
-    } else if app.should_copy_ssh_key {
+    }
+
+    if app.should_copy_ssh_key {
         let selected_config = app.get_selected_item().unwrap();
-        let host_name = selected_config
-            .full_name
-            .split(' ')
-            .take(1)
-            .collect::<Vec<&str>>()
-            .join("");
+        let host_name = &selected_config.full_name;
 
-        println!("Copying SSH key to {}", host_name);
-
-        let result = Command::new("ssh-copy-id")
-            .arg(&host_name)
+        Command::new("ssh-copy-id")
+            .arg(host_name.split(' ').take(1).collect::<Vec<&str>>().join(""))
             .spawn()?
             .wait()?;
-
-        if !result.success() {
-            eprintln!("Failed to copy SSH key to {}", host_name);
-            return Err(format_err!("ssh-copy-id command failed").into());
-        }
-
-        println!("SSH key successfully copied to {}", host_name);
     }
 
     Ok(())
