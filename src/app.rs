@@ -137,6 +137,13 @@ impl App {
         self.host_state.select(Some(i));
     }
 
+    pub fn select_recents_group(&mut self) {
+        if !self.scs.groups.is_empty() && self.scs.groups[0].name == "Recents" {
+            self.selected_group = 0;
+            self.host_state.select(Some(0));
+        }
+    }
+
     pub fn scroll_config_paragraph(&mut self, offset: i64) {
         self.config_paragraph_offset = (self.config_paragraph_offset as i64 + offset).max(0) as u16;
     }
