@@ -32,7 +32,10 @@ pub fn handle_inputs(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 
 fn handle_input_search_mode(app: &mut App, key: KeyCode) {
     match key {
-        KeyCode::Esc => app.state = AppState::Normal,
+        KeyCode::Esc => {
+            app.searcher.clear_search();
+            app.state = AppState::Normal;
+        }
         KeyCode::Char(c) => app.searcher.add_char(c),
         KeyCode::Backspace => app.searcher.del_char(),
         _ => {}

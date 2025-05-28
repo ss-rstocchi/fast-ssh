@@ -43,6 +43,11 @@ impl Searcher {
         self.search_string.pop();
     }
 
+    pub fn clear_search(&mut self) {
+        self.search_string.clear();
+        self.has_user_input = false;
+    }
+
     pub fn render(&self, _app: &App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
         let block = block::new(" Search ");
 
