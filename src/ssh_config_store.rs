@@ -1,8 +1,8 @@
 use crate::database::FileDatabase;
 use anyhow::{format_err, Result};
 use ssh_cfg::{SshConfig, SshConfigParser, SshHostConfig};
-use std::fmt::Debug;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::fs::read_to_string;
 use std::path::PathBuf;
 
@@ -42,7 +42,7 @@ impl ConfigComments for SshConfig {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SshGroupItem {
     pub name: String,
     pub full_name: String,
@@ -84,7 +84,11 @@ impl SshConfigStore {
         Ok(scs)
     }
 
-    fn create_ssh_groups(&mut self, db: &FileDatabase, comments: &std::collections::HashMap<String, String>) {
+    fn create_ssh_groups(
+        &mut self,
+        db: &FileDatabase,
+        comments: &std::collections::HashMap<String, String>,
+    ) {
         let mut groups: Vec<SshGroup> = vec![SshGroup {
             name: "Others".to_string(),
             items: Vec::new(),
@@ -139,5 +143,25 @@ impl SshConfigStore {
 
         groups.reverse();
         self.groups = groups.into_iter().filter(|g| !g.items.is_empty()).collect();
+
+        let mut all_used_items: Vec<SshGroupItem> = self
+            .groups
+            .iter()
+            .flat_map(|g| g.items.iter().filter(|i| i.last_used > 0).cloned())
+            .collect();
+
+        all_used_items.sort_by(|a, b| b.last_used.cmp(&a.last_used));
+
+        all_used_items.truncate(20);
+
+        if !all_used_items.is_empty() {
+            self.groups.insert(
+                0,
+                SshGroup {
+                    name: "Recents".to_string(),
+                    items: all_used_items,
+                },
+            );
+        }
     }
 }
