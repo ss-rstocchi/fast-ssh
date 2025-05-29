@@ -54,6 +54,12 @@ fn handle_input_normal_mode(app: &mut App, key: KeyCode) {
                 app.should_quit = true;
             }
         }
+        KeyCode::Char('C') => {
+            if app.get_selected_item().is_some() {
+                app.should_copy_files = true;
+                app.should_quit = true;
+            }
+        }
         _ => {}
     }
 }

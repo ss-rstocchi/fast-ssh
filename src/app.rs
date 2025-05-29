@@ -29,6 +29,8 @@ pub struct App {
     pub should_quit: bool,
     pub should_spawn_ssh: bool,
     pub should_copy_ssh_key: bool,
+    pub should_copy_files: bool,
+
     pub config_paragraph_offset: u16,
     pub db: FileDatabase,
     pub show_help: bool,
@@ -49,6 +51,7 @@ impl App {
             should_quit: false,
             should_spawn_ssh: false,
             should_copy_ssh_key: false,
+            should_copy_files: false,
             config_display_mode: ConfigDisplayMode::Selected,
             db,
             searcher: Searcher::new(),

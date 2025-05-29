@@ -27,6 +27,7 @@ impl ShortcutsWidget {
             Spans::from("'s' Search Mode"),
             Spans::from("'Esc' Exit Search Mode"),
             Spans::from("'k': Copy SSH Key to Host"),
+            Spans::from("'C': Start SFTP Connection to Host"),
             Spans::from("'q': Exit"),
         ];
 

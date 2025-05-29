@@ -95,5 +95,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .wait()?;
     }
 
+    if app.should_copy_files {
+        let selected_config = app.get_selected_item().unwrap();
+        let host_name = &selected_config.full_name;
+
+        Command::new("sftp")
+            .arg(host_name.split(' ').take(1).collect::<Vec<&str>>().join(""))
+            .spawn()?
+            .wait()?;
+    }
+
     Ok(())
 }
