@@ -12,10 +12,10 @@ pub fn handle_inputs(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         match key.code {
             KeyCode::Tab => app.change_selected_group(true),
             KeyCode::BackTab => app.change_selected_group(false),
-            KeyCode::Left => app.change_selected_group(false),
-            KeyCode::Right => app.change_selected_group(true),
-            KeyCode::Down => app.change_selected_item(true),
-            KeyCode::Up => app.change_selected_item(false),
+            KeyCode::Left | KeyCode::Char('h') => app.change_selected_group(false),
+            KeyCode::Right | KeyCode::Char('l') => app.change_selected_group(true),
+            KeyCode::Down | KeyCode::Char('j') => app.change_selected_item(true),
+            KeyCode::Up | KeyCode::Char('k') => app.change_selected_item(false),
             KeyCode::PageDown => app.scroll_config_paragraph(1),
             KeyCode::PageUp => app.scroll_config_paragraph(-1),
             KeyCode::Char(' ') => app.select_recents_group(),
@@ -32,7 +32,7 @@ pub fn handle_inputs(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 
 fn handle_input_search_mode(app: &mut App, key: KeyCode) {
     match key {
-        KeyCode::Esc => {
+        KeyCode::Esc | KeyCode::Char('q') => {
             app.searcher.clear_search();
             app.state = AppState::Normal;
         }
@@ -45,10 +45,10 @@ fn handle_input_search_mode(app: &mut App, key: KeyCode) {
 fn handle_input_normal_mode(app: &mut App, key: KeyCode) {
     match key {
         KeyCode::Char('c') => app.toggle_config_display_mode(),
-        KeyCode::Char('h') => app.show_help = !app.show_help,
-        KeyCode::Char('s') => app.state = AppState::Searching,
+        KeyCode::Char('?') => app.show_help = !app.show_help,
+        KeyCode::Char('s') | KeyCode::Char('/') => app.state = AppState::Searching,
         KeyCode::Char('q') => app.should_quit = true,
-        KeyCode::Char('k') => {
+        KeyCode::Char('K') => {
             if app.get_selected_item().is_some() {
                 app.should_copy_ssh_key = true;
                 app.should_quit = true;

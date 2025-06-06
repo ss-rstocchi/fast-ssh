@@ -18,17 +18,19 @@ impl ShortcutsWidget {
         let block = block::new(" Help ");
 
         let text = vec![
-            Spans::from("'Enter': Validate"),
-            Spans::from("'Space' Select Recents Group"),
-            Spans::from("'BackTab/Tab': Change Group"),
-            Spans::from("'Left/Right': Change Group"),
-            Spans::from("'c': Configuration Display Mode"),
+            Spans::from("'?': Display Shortcuts Panel"),
+            Spans::from("'Enter': Open Selected SSH Connection"),
+            Spans::from("'Space': Select Recents Group"),
+            Spans::from("'Tab/BackTab': Change Group"),
+            Spans::from("'Left/Right Arrow or h/l': Change Group"),
+            Spans::from("'Up/Down Arrow or k/j': Navigate Hosts"),
+            Spans::from("'c': Switch Config Display Mode"),
             Spans::from("'PageUp/Down': Scroll Configuration"),
-            Spans::from("'s' Search Mode"),
-            Spans::from("'Esc' Exit Search Mode"),
-            Spans::from("'k': Copy SSH Key to Host"),
-            Spans::from("'C': Start SFTP Connection to Host"),
-            Spans::from("'q': Exit"),
+            Spans::from("'s' or '/': Enable Search Mode"),
+            Spans::from("'Esc' or 'q': Exit Search Mode"),
+            Spans::from("'K': Copy SSH Key and Exit"),
+            Spans::from("'C': Copy Files and Exit"),
+            Spans::from("'q': Exit Fast-SSH"),
         ];
 
         let paragraph = Paragraph::new(text)
