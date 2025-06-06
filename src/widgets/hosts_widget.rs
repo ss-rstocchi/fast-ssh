@@ -17,19 +17,48 @@ pub struct HostsWidget {}
 
 impl HostsWidget {
     pub fn render(app: &mut App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
-        let block = block::new(" Hosts ");
-        let header = HostsWidget::create_header();
-        let items = app.get_items_based_on_mode();
-        let rows = HostsWidget::create_rows_from_items(&items);
+            let title = match app.state {
+                crate::app::AppState::Editing => {
+                    if app.get_selected_group().name == "Recents" {
+                        " Edit Mode: Cannot edit Recents (Esc to exit) "
+                    } else {
+                        if app.should_save_config {
+                            " Edit Mode: Changes pending (Enter to save, Esc to exit) "
+                        } else {
+                            // Show a simple edit mode title
+                            " Edit Mode (Esc to exit) "
+                        }
+                    }
+                },
+                _ => " Hosts ",
+            };
+            let block = block::new(title);
+            let header = HostsWidget::create_header();
+            let items = app.get_items_based_on_mode();
+            let rows = HostsWidget::create_rows_from_items(&items);
 
-        if app.host_state.selected().unwrap_or(0) >= items.len() {
-            app.host_state.select(Some(0));
-        }
+            if app.host_state.selected().unwrap_or(0) >= items.len() {
+                app.host_state.select(Some(0));
+            }
 
+        let highlight_style = match app.state {
+            crate::app::AppState::Editing if app.should_save_config => {
+                // Use a different highlight style when changes are pending in Edit mode
+                Style::default().fg(THEME.text_primary()).bg(THEME.border_color())
+                    .add_modifier(tui::style::Modifier::BOLD)
+            },
+            crate::app::AppState::Editing => {
+                // Use a slightly different highlight style to indicate Edit mode
+                Style::default().fg(THEME.text_primary()).add_modifier(tui::style::Modifier::BOLD)
+                    .add_modifier(tui::style::Modifier::UNDERLINED)
+            },
+            _ => Style::default().fg(THEME.text_primary())
+        };
+        
         let t = Table::new(rows)
             .header(header)
             .block(block)
-            .highlight_style(Style::default().fg(THEME.text_primary()))
+            .highlight_style(highlight_style)
             .style(Style::default().fg(THEME.text_secondary()))
             .highlight_symbol(">> ")
             .widths(&[

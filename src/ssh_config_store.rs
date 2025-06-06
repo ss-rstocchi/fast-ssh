@@ -52,7 +52,7 @@ pub struct SshGroupItem {
     pub comment: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SshGroup {
     pub name: String,
     pub items: Vec<SshGroupItem>,
@@ -94,6 +94,9 @@ impl SshConfigStore {
             items: Vec::new(),
         }];
 
+        // Map to store groups by name to ensure consistent order
+        let mut group_map: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
         self.config.iter().for_each(|(key, value)| {
             let host_entry = db.get_host_values(key).unwrap();
 
@@ -117,10 +120,18 @@ impl SshConfigStore {
                 };
 
                 if group.is_none() {
-                    groups.push(SshGroup {
-                        name: group_name.to_string(),
-                        items: vec![group_item],
-                    });
+                    // Add this group name to our tracking map if not already there
+                    if !group_map.contains_key(group_name) {
+                        group_map.insert(group_name.to_string(), groups.len());
+                        groups.push(SshGroup {
+                            name: group_name.to_string(),
+                            items: vec![group_item],
+                        });
+                    } else {
+                        // Group exists but wasn't found by iter_mut, get its index
+                        let idx = group_map[group_name];
+                        groups[idx].items.push(group_item);
+                    }
 
                     return;
                 }
@@ -141,7 +152,8 @@ impl SshConfigStore {
             });
         });
 
-        groups.reverse();
+        // Instead of reversing (which changes order each time), 
+        // sort groups by their first appearance in the config
         self.groups = groups.into_iter().filter(|g| !g.items.is_empty()).collect();
 
         let mut all_used_items: Vec<SshGroupItem> = self

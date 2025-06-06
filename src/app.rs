@@ -14,9 +14,16 @@ pub enum ConfigDisplayMode {
     Selected,
 }
 
+#[derive(PartialEq)]
 pub enum AppState {
     Searching,
     Normal,
+    Editing,
+}
+
+pub struct FilteredGroup {
+    pub original_index: usize,
+    pub name: String,
 }
 
 pub struct App {
@@ -30,6 +37,7 @@ pub struct App {
     pub should_spawn_ssh: bool,
     pub should_copy_ssh_key: bool,
     pub should_copy_files: bool,
+    pub should_save_config: bool,
 
     pub config_paragraph_offset: u16,
     pub db: FileDatabase,
@@ -42,9 +50,15 @@ impl App {
         let scs = SshConfigStore::new(&db).await?;
         resolve_config();
 
+        let initial_group = if scs.groups.len() > 1 && scs.groups[0].name == "Recents" {
+            1
+        } else {
+            0
+        };
+
         Ok(App {
             state: AppState::Normal,
-            selected_group: 0,
+            selected_group: initial_group,
             config_paragraph_offset: 0,
             scs,
             host_state: TableState::default(),
@@ -52,6 +66,7 @@ impl App {
             should_spawn_ssh: false,
             should_copy_ssh_key: false,
             should_copy_files: false,
+            should_save_config: false,
             config_display_mode: ConfigDisplayMode::Selected,
             db,
             searcher: Searcher::new(),
@@ -74,6 +89,30 @@ impl App {
 
     pub fn get_selected_group(&self) -> &SshGroup {
         &self.scs.groups[self.selected_group]
+    }
+    
+    pub fn get_filtered_groups(&self) -> Vec<FilteredGroup> {
+        self.scs.groups.iter().enumerate()
+            .filter(|(_, group)| {
+                if matches!(self.state, AppState::Editing) {
+                    group.name != "Recents"
+                } else {
+                    true
+                }
+            })
+            .map(|(idx, group)| FilteredGroup {
+                original_index: idx,
+                name: group.name.clone(),
+            })
+            .collect()
+    }
+
+    pub fn get_visible_group_index(&self, original_index: usize) -> Option<usize> {
+        self.get_filtered_groups().iter().position(|fg| fg.original_index == original_index)
+    }
+
+    pub fn get_original_group_index(&self, visible_index: usize) -> Option<usize> {
+        self.get_filtered_groups().get(visible_index).map(|fg| fg.original_index)
     }
 
     pub fn get_selected_item(&self) -> Option<&SshGroupItem> {
@@ -98,16 +137,19 @@ impl App {
     }
 
     pub fn get_items_based_on_mode(&self) -> Vec<&SshGroupItem> {
-        let items: Vec<&SshGroupItem> = match self.state {
+        match self.state {
             AppState::Normal => self
                 .get_selected_group()
                 .items
                 .iter()
                 .collect::<Vec<&SshGroupItem>>(),
             AppState::Searching => self.searcher.get_filtered_items(self),
-        };
-
-        items
+            AppState::Editing => self
+                .get_selected_group()
+                .items
+                .iter()
+                .collect::<Vec<&SshGroupItem>>(),
+        }
     }
 
     pub fn change_selected_group(&mut self, rot_right: bool) {
