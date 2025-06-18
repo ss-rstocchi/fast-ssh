@@ -80,6 +80,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
 
         Command::new("ssh")
+            .arg("-o")
+            .arg("ConnectTimeout=10") // Set connection timeout to 10 seconds
+            .arg("-o")
+            .arg("ServerAliveInterval=5") // Send keep-alive every 5 seconds
             .arg(host_name.split(' ').take(1).collect::<Vec<&str>>().join(""))
             .spawn()?
             .wait()?;
