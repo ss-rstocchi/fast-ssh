@@ -97,6 +97,15 @@ impl App {
             .collect::<Vec<&SshGroupItem>>()
     }
 
+    pub fn get_all_items_except_recents(&self) -> Vec<&SshGroupItem> {
+        self.scs
+            .groups
+            .iter()
+            .filter(|group| group.name != "Recents")
+            .flat_map(|group| &group.items)
+            .collect::<Vec<&SshGroupItem>>()
+    }
+
     pub fn get_items_based_on_mode(&self) -> Vec<&SshGroupItem> {
         let items: Vec<&SshGroupItem> = match self.state {
             AppState::Normal => self

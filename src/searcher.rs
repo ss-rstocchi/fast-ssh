@@ -25,10 +25,10 @@ impl Searcher {
 
     pub fn get_filtered_items<'a>(&self, app: &'a App) -> Vec<&'a SshGroupItem> {
         if self.search_string.is_empty() {
-            return app.get_all_items();
+            return app.get_all_items_except_recents();
         }
 
-        app.get_all_items()
+        app.get_all_items_except_recents()
             .into_iter()
             .filter(|item| best_match(&self.search_string, &item.full_name).is_some())
             .collect::<Vec<&SshGroupItem>>()
