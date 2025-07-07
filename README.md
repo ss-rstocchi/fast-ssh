@@ -75,22 +75,31 @@ This database is used to store the number of connections to a service and the da
 
 Fast-SSH implements a search mode ( fuzzy ) that allows you to type to find one of your hosts. To use it, press `s`, start typing, finish your selection with the arrow keys then press enter once the host is selected to make the SSH connection. Press ESC if you wish to leave the search mode and return to the "groups" mode.
 
+The search function looks for matches in:
+
+- Host names
+- Hostnames (IP/domain)
+- Notes/comments
+
+Recent connections are automatically excluded from search results.
+
 ## Shortcuts
 
-| Key                     | Action                               |
-| ----------------------- | ------------------------------------ |
-| ?                       | Display Shortcuts Panel              |
-| Enter                   | Validate selection : Execute SSH cmd |
-| Tab/BackTab             | Navigate through your groups         |
-| Left/Right Arrow or h/l | Navigate through your groups         |
-| Up/Down Arrow or k/j    | Navigate through your hosts          |
-| c                       | Switch Config display mode           |
-| Page Up/Down            | Scroll Configuration                 |
-| s or /                  | Enable Search Mode                   |
-| Esc or q                | Exit Search Mode                     |
-| q                       | Exit Fast-SSH                        |
-| K                       | Copy SSH key and exit                |
-| C                       | Copy files and exit                  |
+| Key                     | Action                                |
+| ----------------------- | ------------------------------------- |
+| ?                       | Display Shortcuts Panel               |
+| Enter                   | Validate selection : Execute SSH cmd  |
+| Tab/BackTab             | Navigate through your groups          |
+| Left/Right Arrow or h/l | Navigate through your groups          |
+| Up/Down Arrow or k/j    | Navigate through your hosts           |
+| c                       | Switch Config display mode            |
+| Page Up/Down            | Scroll Configuration                  |
+| s or /                  | Enable Search Mode                    |
+| Esc or q                | Exit Search Mode                      |
+| Alt+j/k                 | Navigate up/down while in Search Mode |
+| q                       | Exit Fast-SSH                         |
+| K                       | Copy SSH key and exit                 |
+| C                       | Copy files and exit                   |
 
 ## Configuration
 
