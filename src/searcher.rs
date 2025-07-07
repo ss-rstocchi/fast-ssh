@@ -30,7 +30,30 @@ impl Searcher {
 
         app.get_all_items_except_recents()
             .into_iter()
-            .filter(|item| best_match(&self.search_string, &item.full_name).is_some())
+            .filter(|item| {
+                // Check host name match
+                if best_match(&self.search_string, &item.full_name).is_some() {
+                    return true;
+                }
+
+                // Check hostname parameter match
+                for (key, value) in item.host_config.iter() {
+                    if key.to_string().to_lowercase() == "hostname"
+                        && best_match(&self.search_string, value).is_some()
+                    {
+                        return true;
+                    }
+                }
+
+                // Check notes/comments match
+                if let Some(comment) = &item.comment {
+                    if best_match(&self.search_string, comment).is_some() {
+                        return true;
+                    }
+                }
+
+                false
+            })
             .collect::<Vec<&SshGroupItem>>()
     }
 
