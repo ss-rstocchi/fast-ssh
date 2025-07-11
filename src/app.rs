@@ -108,11 +108,19 @@ impl App {
 
     pub fn get_items_based_on_mode(&self) -> Vec<&SshGroupItem> {
         let items: Vec<&SshGroupItem> = match self.state {
-            AppState::Normal => self
-                .get_selected_group()
-                .items
-                .iter()
-                .collect::<Vec<&SshGroupItem>>(),
+            AppState::Normal => {
+                let mut group_items = self
+                    .get_selected_group()
+                    .items
+                    .iter()
+                    .collect::<Vec<&SshGroupItem>>();
+
+                if self.get_selected_group().name != "Recents" {
+                    group_items.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                }
+
+                group_items
+            }
             AppState::Searching => self.searcher.get_filtered_items(self),
         };
 
