@@ -30,7 +30,7 @@ const SSH_KEEP_ALIVE_INTERVAL: &str = "ServerAliveInterval=5";
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
 pub fn get_config() -> &'static Config {
-    CONFIG.get_or_init(|| resolve_config())
+    CONFIG.get_or_init(resolve_config)
 }
 
 // Re-export THEME for backwards compatibility
@@ -102,6 +102,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         };
         
+        // Assert preconditions
+        debug_assert!(!selected_config.full_name.is_empty(), "host name should not be empty");
+        debug_assert!(selected_config.connection_count >= 0, "connection count should be non-negative");
+        
         let host_name = &selected_config.full_name;
 
         // Update database with connection info
@@ -113,6 +117,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Extract the first part of the hostname (before any space)
         let host_arg = host_name.split_whitespace().next().unwrap_or(host_name);
+        
+        // Assert extracted host is valid
+        debug_assert!(!host_arg.is_empty(), "extracted host should not be empty");
 
         // Build and execute the command
         let mut command = Command::new(cmd);

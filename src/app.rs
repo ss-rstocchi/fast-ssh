@@ -138,6 +138,10 @@ impl App {
     pub fn change_selected_group(&mut self, rot_right: bool) {
         let items_len = self.scs.groups.len();
         
+        // Assert preconditions
+        debug_assert!(items_len > 0, "groups should never be empty (validated in new())");
+        debug_assert!(self.selected_group < items_len, "selected_group index should be in bounds");
+        
         // Guard against empty groups (should never happen in practice due to validation in new())
         if items_len == 0 {
             return;
@@ -154,12 +158,16 @@ impl App {
     pub fn change_selected_item(&mut self, rot_right: bool) {
         let items_len = self.get_items_based_on_mode().len();
 
+        // Assert preconditions
+        debug_assert!(items_len < usize::MAX, "items_len should be reasonable");
+        
         if items_len == 0 {
             return;
         }
 
         let i = match self.host_state.selected() {
             Some(i) => {
+                debug_assert!(i < items_len, "selected index should be in bounds");
                 if rot_right {
                     (i + 1) % items_len
                 } else {
@@ -183,6 +191,9 @@ impl App {
 
     #[inline]
     pub fn scroll_config_paragraph(&mut self, offset: i64) {
+        // Assert invariants and bounds
+        debug_assert!(offset.abs() < 10000, "offset should be reasonable");
+        
         let new_offset = (self.config_paragraph_offset as i64 + offset).max(0);
         self.config_paragraph_offset = new_offset.min(u16::MAX as i64) as u16;
     }
@@ -198,6 +209,10 @@ impl App {
     #[inline]
     pub fn jump_to_first_item(&mut self) {
         let items_len = self.get_items_based_on_mode().len();
+        
+        // Assert bounds
+        debug_assert!(items_len < usize::MAX, "items_len should be reasonable");
+        
         if items_len > 0 {
             self.host_state.select(Some(0));
         }
@@ -206,6 +221,10 @@ impl App {
     #[inline]
     pub fn jump_to_last_item(&mut self) {
         let items_len = self.get_items_based_on_mode().len();
+        
+        // Assert bounds
+        debug_assert!(items_len < usize::MAX, "items_len should be reasonable");
+        
         if items_len > 0 {
             self.host_state.select(Some(items_len - 1));
         }
@@ -214,6 +233,10 @@ impl App {
     #[inline]
     pub fn scroll_half_page(&mut self, down: bool) {
         let items_len = self.get_items_based_on_mode().len();
+        
+        // Assert preconditions and bounds
+        debug_assert!(items_len < usize::MAX, "items_len should be reasonable");
+        
         if items_len == 0 {
             return;
         }
@@ -227,6 +250,9 @@ impl App {
         } else {
             current.saturating_sub(half_page)
         };
+        
+        // Assert postconditions
+        debug_assert!(new_pos < items_len, "new position should be in bounds");
         
         self.host_state.select(Some(new_pos));
     }

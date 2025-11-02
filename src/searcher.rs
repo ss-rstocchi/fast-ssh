@@ -65,16 +65,24 @@ impl Searcher {
                 // Check notes/comments match
                 item.comment
                     .as_ref()
-                    .map_or(false, |comment| best_match(&self.search_string, comment).is_some())
+                    .is_some_and(|comment| best_match(&self.search_string, comment).is_some())
             })
             .collect()
     }
 
     pub fn add_char(&mut self, c: char) {
+        // Assert preconditions
+        debug_assert!(c.is_ascii() || c.len_utf8() <= 4, "char should be valid unicode");
+        debug_assert!(self.search_string.len() < 1000, "search string should be reasonable length");
+        
         self.search_string.push(c);
     }
 
     pub fn del_char(&mut self) {
+        // Assert state is valid before modification
+        // Note: Rust String is always valid UTF-8, pop() handles character boundaries
+        debug_assert!(self.search_string.len() < 1000, "search string should be reasonable length");
+        
         self.search_string.pop();
     }
 
