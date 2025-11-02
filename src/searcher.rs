@@ -15,6 +15,12 @@ pub struct Searcher {
     is_committed: bool,
 }
 
+impl Default for Searcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Searcher {
     pub fn new() -> Searcher {
         Searcher {

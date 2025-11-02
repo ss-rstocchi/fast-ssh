@@ -26,7 +26,8 @@ impl GroupsWidget {
             })
             .collect();
 
-        if app.selected_group < titles.len() && !titles.is_empty() {
+        // Rotate to show selected group first (safe: bounds checked above)
+        if !titles.is_empty() && app.selected_group < titles.len() {
             titles.rotate_left(app.selected_group);
         }
 
