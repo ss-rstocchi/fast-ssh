@@ -9,8 +9,11 @@ use tui::{
 use crate::app::App;
 
 pub struct AppLayout {
-    pub chunks_top: Vec<Rect>,
-    pub chunks_bot: Vec<Rect>,
+    pub groups_area: Rect,
+    pub help_area: Rect,
+    pub hosts_area: Rect,
+    pub config_area: Rect,
+    pub shortcuts_area: Option<Rect>,
 }
 
 pub fn create_layout(app: &App, frame: &mut Frame<CrosstermBackend<Stdout>>) -> AppLayout {
@@ -61,7 +64,14 @@ pub fn create_layout(app: &App, frame: &mut Frame<CrosstermBackend<Stdout>>) -> 
         .split(base_chunk[1]);
 
     AppLayout {
-        chunks_bot,
-        chunks_top,
+        groups_area: chunks_top[0],
+        help_area: chunks_top[2],
+        hosts_area: chunks_bot[0],
+        config_area: chunks_bot[2],
+        shortcuts_area: if app.show_help {
+            Some(chunks_bot[4])
+        } else {
+            None
+        },
     }
 }

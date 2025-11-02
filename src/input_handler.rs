@@ -5,148 +5,20 @@ use crate::app::{App, AppState};
 pub fn handle_inputs(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     if let Event::Key(key) = event::read()? {
         match app.state {
-            AppState::Normal => handle_input_normal_mode(app, key.code),
-            AppState::Searching => handle_input_search_mode(app, key.code, key.modifiers),
-        };
-
-        // Process navigation keys in normal mode
-        if matches!(app.state, AppState::Normal) {
-            match key.code {
-                KeyCode::Tab => app.change_selected_group(true),
-                KeyCode::BackTab => app.change_selected_group(false),
-                KeyCode::Left | KeyCode::Char('h') => app.change_selected_group(false),
-                KeyCode::Right | KeyCode::Char('l') => app.change_selected_group(true),
-                KeyCode::Down | KeyCode::Char('j') => app.change_selected_item(true),
-                KeyCode::Up | KeyCode::Char('k') => app.change_selected_item(false),
-                KeyCode::PageDown => app.scroll_config_paragraph(1),
-                KeyCode::PageUp => app.scroll_config_paragraph(-1),
-                KeyCode::Char(' ') => app.select_recents_group(),
-                // Vim-like navigation: gg to go to top
-                KeyCode::Char('g') => {
-                    if app.pending_g {
-                        app.jump_to_first_item();
-                        app.pending_g = false;
-                    } else {
-                        app.pending_g = true;
-                    }
-                }
-                // Vim-like navigation: G to go to bottom
-                KeyCode::Char('G') => {
-                    app.jump_to_last_item();
-                    app.pending_g = false;
-                }
-                // Vim-like navigation: Ctrl+d for half-page down
-                KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    app.scroll_half_page(true);
-                    app.pending_g = false;
-                }
-                // Vim-like navigation: Ctrl+u for half-page up
-                KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    app.scroll_half_page(false);
-                    app.pending_g = false;
-                }
-                KeyCode::Enter => {
-                    if app.get_selected_item().is_some() {
-                        app.should_spawn_ssh = true;
-                    }
-                    app.pending_g = false;
-                }
-                _ => {
-                    // Reset pending_g on any other key
-                    app.pending_g = false;
-                }
-            };
-        } else if matches!(app.state, AppState::Searching) {
-            // Handle navigation in search mode
-            match key.code {
-                // Arrow keys for navigation in search mode
-                KeyCode::Down => {
-                    app.change_selected_item(true);
-                }
-                KeyCode::Up => {
-                    app.change_selected_item(false);
-                }
-                // Use Alt+j/k for navigation in search mode
-                KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::ALT) => {
-                    app.change_selected_item(true);
-                }
-                KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::ALT) => {
-                    app.change_selected_item(false);
-                }
-                // n/N for navigation in search mode (like Vim) - only after Enter is pressed
-                KeyCode::Char('n') if app.searcher.is_committed() => {
-                    app.change_selected_item(true);
-                }
-                KeyCode::Char('N') if app.searcher.is_committed() => {
-                    app.change_selected_item(false);
-                }
-                // Vim-like navigation: gg to go to top (only when committed)
-                KeyCode::Char('g') if app.searcher.is_committed() => {
-                    if app.pending_g {
-                        app.jump_to_first_item();
-                        app.pending_g = false;
-                    } else {
-                        app.pending_g = true;
-                    }
-                }
-                // Vim-like navigation: G to go to bottom (only when committed)
-                KeyCode::Char('G') if app.searcher.is_committed() => {
-                    app.jump_to_last_item();
-                    app.pending_g = false;
-                }
-                // Vim-like navigation: Ctrl+d for half-page down
-                KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    app.scroll_half_page(true);
-                    app.pending_g = false;
-                }
-                // Vim-like navigation: Ctrl+u for half-page up
-                KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    app.scroll_half_page(false);
-                    app.pending_g = false;
-                }
-                KeyCode::Enter => {
-                    // If search is not committed, commit it (like Vim)
-                    if !app.searcher.is_committed() {
-                        app.searcher.commit_search();
-                        app.host_state.select(Some(0));
-                    } else if app.get_selected_item().is_some() {
-                        // If already committed, connect to selected host
-                        app.should_spawn_ssh = true;
-                    }
-                    app.pending_g = false;
-                }
-                _ => {
-                    // Reset pending_g on any other key in search mode too
-                    if app.searcher.is_committed() {
-                        app.pending_g = false;
-                    }
-                }
+            AppState::Normal => {
+                handle_input_normal_mode(app, key.code, key.modifiers);
             }
-        }
+            AppState::Searching => {
+                handle_input_search_mode(app, key.code, key.modifiers);
+            }
+        };
     }
     Ok(())
 }
 
-fn handle_input_search_mode(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
-    match key {
-        KeyCode::Esc | KeyCode::Char('q') => {
-            app.searcher.clear_search();
-            app.state = AppState::Normal;
-        }
-        // Only allow typing if search is not committed
-        KeyCode::Char(c) if !app.searcher.is_committed() 
-                         && !modifiers.contains(KeyModifiers::ALT) 
-                         && !modifiers.contains(KeyModifiers::CONTROL) => {
-            app.searcher.add_char(c);
-        }
-        KeyCode::Backspace if !app.searcher.is_committed() => {
-            app.searcher.del_char();
-        }
-        _ => {}
-    }
-}
-
-fn handle_input_normal_mode(app: &mut App, key: KeyCode) {
+/// Handle input in normal mode
+fn handle_input_normal_mode(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
+    // Handle mode-specific commands first
     match key {
         KeyCode::Char('c') => app.toggle_config_display_mode(),
         KeyCode::Char('?') => app.show_help = !app.show_help,
@@ -164,6 +36,143 @@ fn handle_input_normal_mode(app: &mut App, key: KeyCode) {
                 app.should_quit = true;
             }
         }
-        _ => {}
+        _ => {
+            // Handle navigation
+            handle_normal_mode_navigation(app, key, modifiers);
+        }
+    }
+}
+
+/// Handle navigation in normal mode
+#[inline]
+fn handle_normal_mode_navigation(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
+    match key {
+        // Group navigation
+        KeyCode::Tab => app.change_selected_group(true),
+        KeyCode::BackTab => app.change_selected_group(false),
+        KeyCode::Left | KeyCode::Char('h') => app.change_selected_group(false),
+        KeyCode::Right | KeyCode::Char('l') => app.change_selected_group(true),
+        KeyCode::Char(' ') => app.select_recents_group(),
+        
+        // Item navigation
+        KeyCode::Down | KeyCode::Char('j') => app.change_selected_item(true),
+        KeyCode::Up | KeyCode::Char('k') => app.change_selected_item(false),
+        
+        // Config scrolling
+        KeyCode::PageDown => app.scroll_config_paragraph(1),
+        KeyCode::PageUp => app.scroll_config_paragraph(-1),
+        
+        // Enter to connect
+        KeyCode::Enter => {
+            if app.get_selected_item().is_some() {
+                app.should_spawn_ssh = true;
+            }
+            app.pending_g = false;
+        }
+        
+        _ => {
+            // Handle common vim-like navigation
+            handle_vim_navigation(app, key, modifiers);
+        }
+    }
+}
+
+/// Handle input in search mode
+fn handle_input_search_mode(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
+    // Exit search mode
+    if matches!(key, KeyCode::Esc | KeyCode::Char('q')) {
+        app.searcher.clear_search();
+        app.state = AppState::Normal;
+        return;
+    }
+
+    // Handle Enter key for search commit or connection
+    if key == KeyCode::Enter {
+        if !app.searcher.is_committed() {
+            app.searcher.commit_search();
+            app.host_state.select(Some(0));
+        } else if app.get_selected_item().is_some() {
+            app.should_spawn_ssh = true;
+        }
+        app.pending_g = false;
+        return;
+    }
+
+    // Only allow typing if search is not committed
+    if !app.searcher.is_committed() {
+        match key {
+            KeyCode::Char(c) if !modifiers.intersects(KeyModifiers::ALT | KeyModifiers::CONTROL) => {
+                app.searcher.add_char(c);
+            }
+            KeyCode::Backspace => {
+                app.searcher.del_char();
+            }
+            _ => {}
+        }
+    } else {
+        // When search is committed, handle navigation
+        handle_search_mode_navigation(app, key, modifiers);
+    }
+}
+
+/// Handle navigation when search is committed
+#[inline]
+fn handle_search_mode_navigation(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
+    match key {
+        // Arrow keys always work
+        KeyCode::Down => app.change_selected_item(true),
+        KeyCode::Up => app.change_selected_item(false),
+        
+        // Alt+j/k for navigation
+        KeyCode::Char('j') if modifiers.contains(KeyModifiers::ALT) => {
+            app.change_selected_item(true);
+        }
+        KeyCode::Char('k') if modifiers.contains(KeyModifiers::ALT) => {
+            app.change_selected_item(false);
+        }
+        
+        // n/N for next/previous (vim-style)
+        KeyCode::Char('n') => app.change_selected_item(true),
+        KeyCode::Char('N') => app.change_selected_item(false),
+        
+        _ => {
+            // Handle common vim-like navigation
+            handle_vim_navigation(app, key, modifiers);
+        }
+    }
+}
+
+/// Handle vim-like navigation common to both modes
+#[inline]
+fn handle_vim_navigation(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
+    match key {
+        // gg to go to top
+        KeyCode::Char('g') => {
+            if app.pending_g {
+                app.jump_to_first_item();
+                app.pending_g = false;
+            } else {
+                app.pending_g = true;
+            }
+        }
+        // G to go to bottom
+        KeyCode::Char('G') => {
+            app.jump_to_last_item();
+            app.pending_g = false;
+        }
+        // Ctrl+d for half-page down
+        KeyCode::Char('d') if modifiers.contains(KeyModifiers::CONTROL) => {
+            app.scroll_half_page(true);
+            app.pending_g = false;
+        }
+        // Ctrl+u for half-page up
+        KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => {
+            app.scroll_half_page(false);
+            app.pending_g = false;
+        }
+        _ => {
+            // Reset pending_g on any other key
+            app.pending_g = false;
+        }
     }
 }

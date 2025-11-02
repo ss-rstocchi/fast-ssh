@@ -1,4 +1,4 @@
-use crate::{App, THEME};
+use crate::{get_theme, App};
 use std::io::Stdout;
 use tui::{
     backend::CrosstermBackend,
@@ -36,7 +36,7 @@ impl ShortcutsWidget {
         let paragraph = Paragraph::new(text)
             .alignment(tui::layout::Alignment::Left)
             .block(block)
-            .style(Style::default().fg(THEME.text_secondary()))
+            .style(Style::default().fg(get_theme().text_secondary()))
             .wrap(Wrap { trim: true });
 
         frame.render_widget(paragraph, area);

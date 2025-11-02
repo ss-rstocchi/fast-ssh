@@ -1,4 +1,4 @@
-use crate::THEME;
+use crate::get_theme;
 use tui::{
     style::Style,
     text::Span,
@@ -6,13 +6,14 @@ use tui::{
 };
 
 pub fn new(title: &str) -> Block {
+    let theme = get_theme();
     Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(THEME.border_color()))
+        .border_style(Style::default().fg(theme.border_color()))
         .title_alignment(tui::layout::Alignment::Center)
         .border_type(tui::widgets::BorderType::Rounded)
         .title(Span::styled(
             title,
-            Style::default().fg(THEME.text_secondary()),
+            Style::default().fg(theme.text_secondary()),
         ))
 }

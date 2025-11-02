@@ -9,15 +9,16 @@ pub struct Config {
 }
 
 pub fn resolve_config() -> Config {
-    let mut config = Config {
-        theme: Theme::default(),
-    };
-
-    if let Ok(parsed_config) = parse_user_config() {
-        config.theme = parsed_config.theme;
+    match parse_user_config() {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("Warning: Failed to load user config: {}", e);
+            eprintln!("Using default theme configuration");
+            Config {
+                theme: Theme::default(),
+            }
+        }
     }
-
-    config
 }
 
 fn parse_user_config() -> Result<Config> {
@@ -36,23 +37,20 @@ fn parse_user_config() -> Result<Config> {
         let conf = match serde_yaml::from_str::<Option<Config>>(&config_file_text) {
             Ok(Some(conf)) => conf,
             Ok(None) => {
-                println!("Error parsing config file");
-                std::process::exit(1);
+                return Err(anyhow::anyhow!("Config file is empty or invalid"));
             }
             Err(e) => {
-                println!(
-                    "Error parsing config file, make sure format is valid :\n  {}",
+                return Err(anyhow::anyhow!(
+                    "Error parsing config file, make sure format is valid: {}",
                     e
-                );
-                std::process::exit(1);
+                ));
             }
         };
 
         return Ok(conf);
     }
 
-    println!("Error while getting config directory");
-    std::process::exit(1);
+    Err(anyhow::anyhow!("Could not get config directory"))
 }
 
 const DEFAULT_CONFIG: &str = "

@@ -9,6 +9,9 @@ use crate::{
     ssh_config_store::{SshConfigStore, SshGroup, SshGroupItem},
 };
 
+// Default number of items to scroll when using half-page navigation
+const DEFAULT_HALF_PAGE_SIZE: usize = 10;
+
 pub enum ConfigDisplayMode {
     Global,
     Selected,
@@ -71,26 +74,25 @@ impl App {
         fs::create_dir_all(&conf_path)
             .with_context(|| format_err!("Could not create the config directory"))?;
 
-        FileDatabase::new(db_path.to_str().unwrap())
+        let db_path_str = db_path
+            .to_str()
+            .ok_or_else(|| format_err!("Database path contains invalid UTF-8"))?;
+
+        FileDatabase::new(db_path_str)
     }
 
-    pub fn get_selected_group(&self) -> &SshGroup {
-        &self.scs.groups[self.selected_group]
+    #[inline]
+    pub fn get_selected_group(&self) -> Option<&SshGroup> {
+        self.scs.groups.get(self.selected_group)
     }
 
+    #[inline]
     pub fn get_selected_item(&self) -> Option<&SshGroupItem> {
-        if let Some(host_state) = self.host_state.selected() {
-            let items_len = self.get_items_based_on_mode().len();
-            if host_state < items_len {
-                Some(self.get_items_based_on_mode()[host_state])
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+        let items = self.get_items_based_on_mode();
+        self.host_state.selected().and_then(|idx| items.get(idx).copied())
     }
 
+    #[inline]
     pub fn get_all_items(&self) -> Vec<&SshGroupItem> {
         self.scs
             .groups
@@ -99,6 +101,7 @@ impl App {
             .collect::<Vec<&SshGroupItem>>()
     }
 
+    #[inline]
     pub fn get_all_items_except_recents(&self) -> Vec<&SshGroupItem> {
         self.scs
             .groups
@@ -111,13 +114,17 @@ impl App {
     pub fn get_items_based_on_mode(&self) -> Vec<&SshGroupItem> {
         let items: Vec<&SshGroupItem> = match self.state {
             AppState::Normal => {
-                let mut group_items = self
-                    .get_selected_group()
+                // Safely get selected group, return empty if out of bounds
+                let Some(selected_group) = self.get_selected_group() else {
+                    return Vec::new();
+                };
+
+                let mut group_items = selected_group
                     .items
                     .iter()
                     .collect::<Vec<&SshGroupItem>>();
 
-                if self.get_selected_group().name != "Recents" {
+                if selected_group.name != "Recents" {
                     group_items.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
                 }
 
@@ -129,6 +136,7 @@ impl App {
         items
     }
 
+    #[inline]
     pub fn change_selected_group(&mut self, rot_right: bool) {
         let actual_idx = self.selected_group;
         let items_len = self.scs.groups.len();
@@ -139,6 +147,7 @@ impl App {
         };
     }
 
+    #[inline]
     pub fn change_selected_item(&mut self, rot_right: bool) {
         let items_len = self.get_items_based_on_mode().len();
 
@@ -159,17 +168,23 @@ impl App {
         self.host_state.select(Some(i));
     }
 
+    #[inline]
     pub fn select_recents_group(&mut self) {
-        if !self.scs.groups.is_empty() && self.scs.groups[0].name == "Recents" {
-            self.selected_group = 0;
-            self.host_state.select(Some(0));
+        if let Some(first_group) = self.scs.groups.first() {
+            if first_group.name == "Recents" {
+                self.selected_group = 0;
+                self.host_state.select(Some(0));
+            }
         }
     }
 
+    #[inline]
     pub fn scroll_config_paragraph(&mut self, offset: i64) {
-        self.config_paragraph_offset = (self.config_paragraph_offset as i64 + offset).max(0) as u16;
+        let new_offset = (self.config_paragraph_offset as i64 + offset).max(0);
+        self.config_paragraph_offset = new_offset.min(u16::MAX as i64) as u16;
     }
 
+    #[inline]
     pub fn toggle_config_display_mode(&mut self) {
         self.config_display_mode = match self.config_display_mode {
             ConfigDisplayMode::Global => ConfigDisplayMode::Selected,
@@ -177,6 +192,7 @@ impl App {
         };
     }
 
+    #[inline]
     pub fn jump_to_first_item(&mut self) {
         let items_len = self.get_items_based_on_mode().len();
         if items_len > 0 {
@@ -184,6 +200,7 @@ impl App {
         }
     }
 
+    #[inline]
     pub fn jump_to_last_item(&mut self) {
         let items_len = self.get_items_based_on_mode().len();
         if items_len > 0 {
@@ -191,14 +208,15 @@ impl App {
         }
     }
 
+    #[inline]
     pub fn scroll_half_page(&mut self, down: bool) {
         let items_len = self.get_items_based_on_mode().len();
         if items_len == 0 {
             return;
         }
 
-        // Use a reasonable half-page size (10 items)
-        let half_page = 10.min(items_len / 2).max(1);
+        // Use a reasonable half-page size (DEFAULT_HALF_PAGE_SIZE items)
+        let half_page = DEFAULT_HALF_PAGE_SIZE.min(items_len / 2).max(1);
         
         let current = self.host_state.selected().unwrap_or(0);
         let new_pos = if down {

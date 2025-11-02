@@ -1,6 +1,6 @@
 use layout::create_layout;
-use lazy_static::lazy_static;
 use std::process::Command;
+use std::sync::OnceLock;
 
 mod app;
 mod config;
@@ -13,23 +13,38 @@ mod term;
 mod theme;
 mod widgets;
 
-use app::*;
-use config::*;
-use input_handler::*;
-use term::*;
-use theme::*;
+use app::{App, AppState};
+use config::{resolve_config, Config};
+use input_handler::handle_inputs;
+use term::{init_terminal, restore_terminal};
+use theme::Theme;
 use widgets::{
     config_widget::ConfigWidget, groups_widget::GroupsWidget, help_widget::HelpWidget,
     hosts_widget::HostsWidget, shortcuts_widget::ShortcutsWidget,
 };
 
-lazy_static! {
-    pub static ref CONFIG: Config = resolve_config();
-    pub static ref THEME: &'static Theme = &CONFIG.theme;
+// SSH connection constants
+const SSH_CONNECT_TIMEOUT: &str = "ConnectTimeout=10";
+const SSH_KEEP_ALIVE_INTERVAL: &str = "ServerAliveInterval=5";
+
+static CONFIG: OnceLock<Config> = OnceLock::new();
+
+pub fn get_config() -> &'static Config {
+    CONFIG.get_or_init(|| resolve_config())
+}
+
+// Re-export THEME for backwards compatibility
+pub static THEME: OnceLock<Theme> = OnceLock::new();
+
+pub fn get_theme() -> &'static Theme {
+    THEME.get_or_init(|| get_config().theme)
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize configuration and theme
+    get_theme();
+
     let mut app = match App::new().await {
         Ok(app) => app,
         Err(e) => {
@@ -47,16 +62,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let layout = create_layout(&app, frame);
 
             match app.state {
-                AppState::Normal => GroupsWidget::render(&app, layout.chunks_top[0], frame),
-                AppState::Searching => app.searcher.render(&app, layout.chunks_top[0], frame),
+                AppState::Normal => GroupsWidget::render(&app, layout.groups_area, frame),
+                AppState::Searching => app.searcher.render(&app, layout.groups_area, frame),
             };
 
-            HelpWidget::render(&mut app, layout.chunks_top[2], frame);
-            HostsWidget::render(&mut app, layout.chunks_bot[0], frame);
-            ConfigWidget::render(&mut app, layout.chunks_bot[2], frame);
+            HelpWidget::render(&app, layout.help_area, frame);
+            HostsWidget::render(&mut app, layout.hosts_area, frame);
+            ConfigWidget::render(&app, layout.config_area, frame);
 
-            if app.show_help {
-                ShortcutsWidget::render(&app, layout.chunks_bot[4], frame);
+            if let Some(shortcuts_area) = layout.shortcuts_area {
+                ShortcutsWidget::render(&app, shortcuts_area, frame);
             }
         })?;
 
@@ -69,56 +84,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     restore_terminal(&mut terminal)?;
 
-    if app.should_spawn_ssh {
-        let selected_config = app.get_selected_item().unwrap();
+    // Execute the command based on the app state
+    let command = if app.should_spawn_ssh {
+        Some("ssh")
+    } else if app.should_copy_ssh_key {
+        Some("ssh-copy-id")
+    } else if app.should_copy_files {
+        Some("sftp")
+    } else {
+        None
+    };
+
+    if let Some(cmd) = command {
+        // Safely get selected config, exit gracefully if none selected
+        let Some(selected_config) = app.get_selected_item() else {
+            eprintln!("Error: No host selected");
+            return Ok(());
+        };
+        
         let host_name = &selected_config.full_name;
 
+        // Update database with connection info
         app.db.save_host_values(
             host_name,
             selected_config.connection_count + 1,
             chrono::offset::Local::now().timestamp(),
         )?;
 
-        Command::new("ssh")
-            .arg("-o")
-            .arg("ConnectTimeout=10") // Set connection timeout to 10 seconds
-            .arg("-o")
-            .arg("ServerAliveInterval=5") // Send keep-alive every 5 seconds
-            .arg(host_name.split(' ').take(1).collect::<Vec<&str>>().join(""))
-            .spawn()?
-            .wait()?;
-    }
+        // Extract the first part of the hostname (before any space)
+        let host_arg = host_name.split_whitespace().next().unwrap_or(host_name);
 
-    if app.should_copy_ssh_key {
-        let selected_config = app.get_selected_item().unwrap();
-        let host_name = &selected_config.full_name;
-
-        app.db.save_host_values(
-            host_name,
-            selected_config.connection_count + 1,
-            chrono::offset::Local::now().timestamp(),
-        )?;
-
-        Command::new("ssh-copy-id")
-            .arg(host_name.split(' ').take(1).collect::<Vec<&str>>().join(""))
-            .spawn()?
-            .wait()?;
-    }
-
-    if app.should_copy_files {
-        let selected_config = app.get_selected_item().unwrap();
-        let host_name = &selected_config.full_name;
-
-        app.db.save_host_values(
-            host_name,
-            selected_config.connection_count + 1,
-            chrono::offset::Local::now().timestamp(),
-        )?;
-
-        Command::new("sftp")
-            .arg(host_name.split(' ').take(1).collect::<Vec<&str>>().join(""))
-            .spawn()?
-            .wait()?;
+        // Build and execute the command
+        let mut command = Command::new(cmd);
+        
+        // Add SSH-specific options
+        if cmd == "ssh" {
+            command
+                .arg("-o")
+                .arg(SSH_CONNECT_TIMEOUT)
+                .arg("-o")
+                .arg(SSH_KEEP_ALIVE_INTERVAL);
+        }
+        
+        command.arg(host_arg).spawn()?.wait()?;
     }
 
     Ok(())

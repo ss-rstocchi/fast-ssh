@@ -38,19 +38,17 @@ def_theme_struct_with_defaults!(
 );
 
 fn hex_to_color(hex: &str) -> Option<Color> {
-    if hex.len() == 7 {
-        let hash = &hex[0..1];
-        let r = u8::from_str_radix(&hex[1..3], 16);
-        let g = u8::from_str_radix(&hex[3..5], 16);
-        let b = u8::from_str_radix(&hex[5..7], 16);
-
-        return match (hash, r, g, b) {
-            ("#", Ok(r), Ok(g), Ok(b)) => Some(Color::Rgb(r, g, b)),
-            _ => None,
-        };
+    // Validate format: must be exactly 7 chars and start with #
+    if hex.len() != 7 || !hex.starts_with('#') {
+        return None;
     }
 
-    None
+    // Use safe slicing with get() to avoid panics on non-ASCII
+    let r = u8::from_str_radix(hex.get(1..3)?, 16).ok()?;
+    let g = u8::from_str_radix(hex.get(3..5)?, 16).ok()?;
+    let b = u8::from_str_radix(hex.get(5..7)?, 16).ok()?;
+
+    Some(Color::Rgb(r, g, b))
 }
 
 mod de {

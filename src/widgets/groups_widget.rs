@@ -1,5 +1,5 @@
 use super::block;
-use crate::{App, THEME};
+use crate::{get_theme, App};
 use std::io::Stdout;
 use tui::layout::Rect;
 use tui::style::{Modifier, Style};
@@ -11,6 +11,7 @@ pub struct GroupsWidget {}
 
 impl GroupsWidget {
     pub fn render(app: &App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
+        let theme = get_theme();
         let block = block::new(" Groups ");
 
         let mut titles: Vec<Spans> = app
@@ -20,12 +21,12 @@ impl GroupsWidget {
             .map(|t| {
                 Spans::from(Span::styled(
                     t.name.to_string(),
-                    Style::default().fg(THEME.text_secondary()),
+                    Style::default().fg(theme.text_secondary()),
                 ))
             })
             .collect();
 
-        if app.selected_group < titles.len() {
+        if app.selected_group < titles.len() && !titles.is_empty() {
             titles.rotate_left(app.selected_group);
         }
 
@@ -35,7 +36,7 @@ impl GroupsWidget {
             .highlight_style(
                 Style::default()
                     .add_modifier(Modifier::BOLD)
-                    .bg(THEME.text_primary()),
+                    .bg(theme.text_primary()),
             );
 
         frame.render_widget(tabs, area);
