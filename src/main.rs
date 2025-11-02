@@ -20,7 +20,7 @@ use term::{init_terminal, restore_terminal};
 use theme::Theme;
 use widgets::{
     config_widget::ConfigWidget, groups_widget::GroupsWidget, help_widget::HelpWidget,
-    hosts_widget::HostsWidget, shortcuts_widget::ShortcutsWidget,
+    hosts_widget::HostsWidget, shortcuts_widget::ShortcutsWidget, version_widget::VersionWidget,
 };
 
 // SSH connection constants
@@ -69,6 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             HelpWidget::render(&app, layout.help_area, frame);
             HostsWidget::render(&mut app, layout.hosts_area, frame);
             ConfigWidget::render(&app, layout.config_area, frame);
+            VersionWidget::render(&app, layout.version_area, frame);
 
             if let Some(shortcuts_area) = layout.shortcuts_area {
                 ShortcutsWidget::render(&app, shortcuts_area, frame);

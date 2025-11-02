@@ -14,6 +14,7 @@ pub struct AppLayout {
     pub hosts_area: Rect,
     pub config_area: Rect,
     pub shortcuts_area: Option<Rect>,
+    pub version_area: Rect,
 }
 
 pub fn create_layout(app: &App, frame: &mut Frame<CrosstermBackend<Stdout>>) -> AppLayout {
@@ -21,7 +22,11 @@ pub fn create_layout(app: &App, frame: &mut Frame<CrosstermBackend<Stdout>>) -> 
         .direction(Direction::Vertical)
         .margin(1)
         .horizontal_margin(4)
-        .constraints([Constraint::Length(3), Constraint::Percentage(90)].as_ref())
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(10),
+            Constraint::Length(1),
+        ].as_ref())
         .split(frame.size());
 
     let chunks_top = Layout::default()
@@ -73,5 +78,6 @@ pub fn create_layout(app: &App, frame: &mut Frame<CrosstermBackend<Stdout>>) -> 
         } else {
             None
         },
+        version_area: base_chunk[2],
     }
 }
