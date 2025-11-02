@@ -19,7 +19,7 @@ pub enum AppState {
     Normal,
 }
 
-pub struct App {
+    pub struct App {
     pub state: AppState,
     pub searcher: Searcher,
     pub selected_group: usize,
@@ -34,6 +34,7 @@ pub struct App {
     pub config_paragraph_offset: u16,
     pub db: FileDatabase,
     pub show_help: bool,
+    pub pending_g: bool, // Track if 'g' was just pressed for 'gg' detection
 }
 
 impl App {
@@ -56,6 +57,7 @@ impl App {
             db,
             searcher: Searcher::new(),
             show_help: false,
+            pending_g: false,
         })
     }
 
@@ -173,5 +175,38 @@ impl App {
             ConfigDisplayMode::Global => ConfigDisplayMode::Selected,
             ConfigDisplayMode::Selected => ConfigDisplayMode::Global,
         };
+    }
+
+    pub fn jump_to_first_item(&mut self) {
+        let items_len = self.get_items_based_on_mode().len();
+        if items_len > 0 {
+            self.host_state.select(Some(0));
+        }
+    }
+
+    pub fn jump_to_last_item(&mut self) {
+        let items_len = self.get_items_based_on_mode().len();
+        if items_len > 0 {
+            self.host_state.select(Some(items_len - 1));
+        }
+    }
+
+    pub fn scroll_half_page(&mut self, down: bool) {
+        let items_len = self.get_items_based_on_mode().len();
+        if items_len == 0 {
+            return;
+        }
+
+        // Use a reasonable half-page size (10 items)
+        let half_page = 10.min(items_len / 2).max(1);
+        
+        let current = self.host_state.selected().unwrap_or(0);
+        let new_pos = if down {
+            (current + half_page).min(items_len - 1)
+        } else {
+            current.saturating_sub(half_page)
+        };
+        
+        self.host_state.select(Some(new_pos));
     }
 }

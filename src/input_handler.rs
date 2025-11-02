@@ -21,12 +21,40 @@ pub fn handle_inputs(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 KeyCode::PageDown => app.scroll_config_paragraph(1),
                 KeyCode::PageUp => app.scroll_config_paragraph(-1),
                 KeyCode::Char(' ') => app.select_recents_group(),
+                // Vim-like navigation: gg to go to top
+                KeyCode::Char('g') => {
+                    if app.pending_g {
+                        app.jump_to_first_item();
+                        app.pending_g = false;
+                    } else {
+                        app.pending_g = true;
+                    }
+                }
+                // Vim-like navigation: G to go to bottom
+                KeyCode::Char('G') => {
+                    app.jump_to_last_item();
+                    app.pending_g = false;
+                }
+                // Vim-like navigation: Ctrl+d for half-page down
+                KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.scroll_half_page(true);
+                    app.pending_g = false;
+                }
+                // Vim-like navigation: Ctrl+u for half-page up
+                KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.scroll_half_page(false);
+                    app.pending_g = false;
+                }
                 KeyCode::Enter => {
                     if app.get_selected_item().is_some() {
                         app.should_spawn_ssh = true;
                     }
+                    app.pending_g = false;
                 }
-                _ => {}
+                _ => {
+                    // Reset pending_g on any other key
+                    app.pending_g = false;
+                }
             };
         } else if matches!(app.state, AppState::Searching) {
             // Handle navigation in search mode
@@ -52,6 +80,30 @@ pub fn handle_inputs(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 KeyCode::Char('N') if app.searcher.is_committed() => {
                     app.change_selected_item(false);
                 }
+                // Vim-like navigation: gg to go to top (only when committed)
+                KeyCode::Char('g') if app.searcher.is_committed() => {
+                    if app.pending_g {
+                        app.jump_to_first_item();
+                        app.pending_g = false;
+                    } else {
+                        app.pending_g = true;
+                    }
+                }
+                // Vim-like navigation: G to go to bottom (only when committed)
+                KeyCode::Char('G') if app.searcher.is_committed() => {
+                    app.jump_to_last_item();
+                    app.pending_g = false;
+                }
+                // Vim-like navigation: Ctrl+d for half-page down
+                KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.scroll_half_page(true);
+                    app.pending_g = false;
+                }
+                // Vim-like navigation: Ctrl+u for half-page up
+                KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.scroll_half_page(false);
+                    app.pending_g = false;
+                }
                 KeyCode::Enter => {
                     // If search is not committed, commit it (like Vim)
                     if !app.searcher.is_committed() {
@@ -61,8 +113,14 @@ pub fn handle_inputs(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                         // If already committed, connect to selected host
                         app.should_spawn_ssh = true;
                     }
+                    app.pending_g = false;
                 }
-                _ => {}
+                _ => {
+                    // Reset pending_g on any other key in search mode too
+                    if app.searcher.is_committed() {
+                        app.pending_g = false;
+                    }
+                }
             }
         }
     }
