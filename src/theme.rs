@@ -88,3 +88,96 @@ mod de {
         deserializer.deserialize_any(ColorVisitor)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hex_to_color_valid() {
+        assert_eq!(hex_to_color("#ffffff"), Some(Color::Rgb(255, 255, 255)));
+        assert_eq!(hex_to_color("#000000"), Some(Color::Rgb(0, 0, 0)));
+        assert_eq!(hex_to_color("#ff0000"), Some(Color::Rgb(255, 0, 0)));
+        assert_eq!(hex_to_color("#00ff00"), Some(Color::Rgb(0, 255, 0)));
+        assert_eq!(hex_to_color("#0000ff"), Some(Color::Rgb(0, 0, 255)));
+        assert_eq!(hex_to_color("#b967ff"), Some(Color::Rgb(185, 103, 255)));
+    }
+
+    #[test]
+    fn test_hex_to_color_invalid_length() {
+        assert_eq!(hex_to_color("#fff"), None);
+        assert_eq!(hex_to_color("#fffffff"), None);
+        assert_eq!(hex_to_color(""), None);
+        assert_eq!(hex_to_color("#"), None);
+    }
+
+    #[test]
+    fn test_hex_to_color_invalid_prefix() {
+        assert_eq!(hex_to_color("ffffff"), None);
+        assert_eq!(hex_to_color("0xffffff"), None);
+    }
+
+    #[test]
+    fn test_hex_to_color_invalid_chars() {
+        assert_eq!(hex_to_color("#gggggg"), None);
+        assert_eq!(hex_to_color("#ffgfff"), None);
+        assert_eq!(hex_to_color("#zzzzzz"), None);
+    }
+
+    #[test]
+    fn test_hex_to_color_case_insensitive() {
+        assert_eq!(hex_to_color("#FFFFFF"), Some(Color::Rgb(255, 255, 255)));
+        assert_eq!(hex_to_color("#FfFfFf"), Some(Color::Rgb(255, 255, 255)));
+        assert_eq!(hex_to_color("#AbCdEf"), Some(Color::Rgb(171, 205, 239)));
+    }
+
+    #[test]
+    fn test_theme_default() {
+        let theme = Theme::default();
+        assert_eq!(theme.text_primary(), Color::White);
+        assert_eq!(theme.text_secondary(), Color::Magenta);
+        assert_eq!(theme.border_color(), Color::Magenta);
+    }
+
+    #[test]
+    fn test_theme_custom_colors() {
+        let theme = Theme {
+            text_primary: Some(Color::Rgb(255, 0, 0)),
+            text_secondary: Some(Color::Rgb(0, 255, 0)),
+            border_color: Some(Color::Rgb(0, 0, 255)),
+        };
+        assert_eq!(theme.text_primary(), Color::Rgb(255, 0, 0));
+        assert_eq!(theme.text_secondary(), Color::Rgb(0, 255, 0));
+        assert_eq!(theme.border_color(), Color::Rgb(0, 0, 255));
+    }
+
+    #[test]
+    fn test_theme_partial_custom() {
+        let theme = Theme {
+            text_primary: Some(Color::Rgb(255, 0, 0)),
+            text_secondary: None,
+            border_color: None,
+        };
+        assert_eq!(theme.text_primary(), Color::Rgb(255, 0, 0));
+        assert_eq!(theme.text_secondary(), Color::Magenta); // Falls back to default
+        assert_eq!(theme.border_color(), Color::Magenta); // Falls back to default
+    }
+
+    #[test]
+    fn test_theme_deserialize_from_yaml() {
+        let yaml = "text_primary: \"#ff0000\"\ntext_secondary: \"#00ff00\"\nborder_color: \"#0000ff\"";
+        let theme: Theme = serde_yaml::from_str(yaml).expect("Failed to deserialize theme");
+        assert_eq!(theme.text_primary(), Color::Rgb(255, 0, 0));
+        assert_eq!(theme.text_secondary(), Color::Rgb(0, 255, 0));
+        assert_eq!(theme.border_color(), Color::Rgb(0, 0, 255));
+    }
+
+    #[test]
+    fn test_theme_deserialize_partial_yaml() {
+        let yaml = "text_primary: \"#ff0000\"";
+        let theme: Theme = serde_yaml::from_str(yaml).expect("Failed to deserialize theme");
+        assert_eq!(theme.text_primary(), Color::Rgb(255, 0, 0));
+        assert_eq!(theme.text_secondary(), Color::Magenta); // Falls back to default
+        assert_eq!(theme.border_color(), Color::Magenta); // Falls back to default
+    }
+}

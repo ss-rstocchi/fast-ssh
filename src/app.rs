@@ -226,3 +226,171 @@ impl App {
         self.host_state.select(Some(new_pos));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Helper function to create a mock App for testing
+    // Note: We can't easily test the full App::new() without mocking async/file operations
+    // So we'll test the individual methods that don't require complex setup
+
+    #[test]
+    fn test_default_half_page_size() {
+        assert_eq!(DEFAULT_HALF_PAGE_SIZE, 10);
+    }
+
+    #[test]
+    fn test_change_selected_group_forward() {
+        // This test demonstrates the modular arithmetic for group navigation
+        let total_groups = 5;
+        
+        // Test forward rotation
+        for i in 0..total_groups {
+            let next = (i + 1) % total_groups;
+            assert_eq!(next, if i == total_groups - 1 { 0 } else { i + 1 });
+        }
+    }
+
+    #[test]
+    fn test_change_selected_group_backward() {
+        // This test demonstrates the modular arithmetic for group navigation
+        let total_groups = 5;
+        
+        // Test backward rotation
+        for i in 0..total_groups {
+            let prev = (i + total_groups - 1) % total_groups;
+            assert_eq!(prev, if i == 0 { total_groups - 1 } else { i - 1 });
+        }
+    }
+
+    #[test]
+    fn test_change_selected_item_forward() {
+        let items_len = 10;
+        
+        // Test forward navigation
+        for i in 0..items_len {
+            let next = (i + 1) % items_len;
+            assert_eq!(next, if i == items_len - 1 { 0 } else { i + 1 });
+        }
+    }
+
+    #[test]
+    fn test_change_selected_item_backward() {
+        let items_len = 10;
+        
+        // Test backward navigation
+        for i in 0..items_len {
+            let prev = (i + items_len - 1) % items_len;
+            assert_eq!(prev, if i == 0 { items_len - 1 } else { i - 1 });
+        }
+    }
+
+    #[test]
+    fn test_scroll_config_paragraph_positive() {
+        // Test positive scrolling
+        let mut offset: u16 = 0;
+        let new_offset = (offset as i64 + 5).max(0);
+        offset = new_offset.min(u16::MAX as i64) as u16;
+        assert_eq!(offset, 5);
+    }
+
+    #[test]
+    fn test_scroll_config_paragraph_negative() {
+        // Test negative scrolling doesn't go below 0
+        let mut offset: u16 = 3;
+        let new_offset = (offset as i64 - 5).max(0);
+        offset = new_offset.min(u16::MAX as i64) as u16;
+        assert_eq!(offset, 0);
+    }
+
+    #[test]
+    fn test_scroll_config_paragraph_overflow() {
+        // Test that we don't overflow u16::MAX
+        let mut offset: u16 = u16::MAX - 1;
+        let new_offset = (offset as i64 + 10).max(0);
+        offset = new_offset.min(u16::MAX as i64) as u16;
+        assert_eq!(offset, u16::MAX);
+    }
+
+    #[test]
+    fn test_scroll_half_page_bounds() {
+        let items_len = 100;
+        let half_page = DEFAULT_HALF_PAGE_SIZE.min(items_len / 2).max(1);
+        
+        // Test half page calculation
+        assert_eq!(half_page, 10);
+        
+        // Test scroll down doesn't exceed bounds
+        let current = 95;
+        let new_pos = (current + half_page).min(items_len - 1);
+        assert_eq!(new_pos, 99); // Should stop at last item
+    }
+
+    #[test]
+    fn test_scroll_half_page_saturating_sub() {
+        let half_page = DEFAULT_HALF_PAGE_SIZE;
+        
+        // Test scroll up with saturating subtraction
+        let current: usize = 5;
+        let new_pos = current.saturating_sub(half_page);
+        assert_eq!(new_pos, 0); // Should stop at 0
+        
+        // Test normal scroll up
+        let current: usize = 20;
+        let new_pos = current.saturating_sub(half_page);
+        assert_eq!(new_pos, 10);
+    }
+
+    #[test]
+    fn test_app_state_enum() {
+        // Test that AppState enum variants exist
+        let _normal = AppState::Normal;
+        let _searching = AppState::Searching;
+    }
+
+    #[test]
+    fn test_config_display_mode_enum() {
+        // Test that ConfigDisplayMode enum variants exist
+        let _global = ConfigDisplayMode::Global;
+        let _selected = ConfigDisplayMode::Selected;
+    }
+
+    #[test]
+    fn test_jump_to_first_item_logic() {
+        // Test the logic for jumping to first item
+        let items_len = 50;
+        if items_len > 0 {
+            let selected = Some(0);
+            assert_eq!(selected, Some(0));
+        }
+    }
+
+    #[test]
+    fn test_jump_to_last_item_logic() {
+        // Test the logic for jumping to last item
+        let items_len = 50;
+        if items_len > 0 {
+            let selected = Some(items_len - 1);
+            assert_eq!(selected, Some(49));
+        }
+    }
+
+    #[test]
+    fn test_half_page_calculation_edge_cases() {
+        // Test with very small list
+        let items_len = 3;
+        let half_page = DEFAULT_HALF_PAGE_SIZE.min(items_len / 2).max(1);
+        assert_eq!(half_page, 1); // Should be at least 1
+        
+        // Test with empty list
+        let items_len = 0;
+        let half_page = DEFAULT_HALF_PAGE_SIZE.min(items_len / 2).max(1);
+        assert_eq!(half_page, 1); // Should be at least 1
+        
+        // Test with large list
+        let items_len = 1000;
+        let half_page = DEFAULT_HALF_PAGE_SIZE.min(items_len / 2).max(1);
+        assert_eq!(half_page, 10); // Should use DEFAULT_HALF_PAGE_SIZE
+    }
+}

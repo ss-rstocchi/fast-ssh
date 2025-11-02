@@ -119,3 +119,102 @@ impl Searcher {
         frame.render_widget(paragraph, area);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_searcher_new() {
+        let searcher = Searcher::new();
+        assert_eq!(searcher.search_string, "");
+        assert!(!searcher.is_committed());
+    }
+
+    #[test]
+    fn test_searcher_default() {
+        let searcher = Searcher::default();
+        assert_eq!(searcher.search_string, "");
+        assert!(!searcher.is_committed());
+    }
+
+    #[test]
+    fn test_add_char() {
+        let mut searcher = Searcher::new();
+        searcher.add_char('h');
+        searcher.add_char('e');
+        searcher.add_char('l');
+        searcher.add_char('l');
+        searcher.add_char('o');
+        assert_eq!(searcher.search_string, "hello");
+    }
+
+    #[test]
+    fn test_del_char() {
+        let mut searcher = Searcher::new();
+        searcher.add_char('h');
+        searcher.add_char('i');
+        assert_eq!(searcher.search_string, "hi");
+        
+        searcher.del_char();
+        assert_eq!(searcher.search_string, "h");
+        
+        searcher.del_char();
+        assert_eq!(searcher.search_string, "");
+        
+        // Deleting from empty string should not panic
+        searcher.del_char();
+        assert_eq!(searcher.search_string, "");
+    }
+
+    #[test]
+    fn test_commit_search() {
+        let mut searcher = Searcher::new();
+        assert!(!searcher.is_committed());
+        
+        searcher.commit_search();
+        assert!(searcher.is_committed());
+    }
+
+    #[test]
+    fn test_clear_search() {
+        let mut searcher = Searcher::new();
+        searcher.add_char('t');
+        searcher.add_char('e');
+        searcher.add_char('s');
+        searcher.add_char('t');
+        searcher.commit_search();
+        
+        assert_eq!(searcher.search_string, "test");
+        assert!(searcher.is_committed());
+        
+        searcher.clear_search();
+        assert_eq!(searcher.search_string, "");
+        assert!(!searcher.is_committed());
+    }
+
+    #[test]
+    fn test_unicode_support() {
+        let mut searcher = Searcher::new();
+        searcher.add_char('こ');
+        searcher.add_char('ん');
+        searcher.add_char('に');
+        searcher.add_char('ち');
+        searcher.add_char('は');
+        assert_eq!(searcher.search_string, "こんにちは");
+        
+        searcher.del_char();
+        assert_eq!(searcher.search_string, "こんにち");
+    }
+
+    #[test]
+    fn test_emoji_support() {
+        let mut searcher = Searcher::new();
+        searcher.add_char('🚀');
+        searcher.add_char('🎉');
+        assert_eq!(searcher.search_string, "🚀🎉");
+        
+        searcher.del_char();
+        assert_eq!(searcher.search_string, "🚀");
+    }
+}

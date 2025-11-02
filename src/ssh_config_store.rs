@@ -173,3 +173,124 @@ impl SshConfigStore {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_recents_group_constant() {
+        assert_eq!(RECENTS_GROUP, "Recents");
+    }
+
+    #[test]
+    fn test_others_group_constant() {
+        assert_eq!(OTHERS_GROUP, "Others");
+    }
+
+    #[test]
+    fn test_recents_limit_constant() {
+        assert_eq!(RECENTS_LIMIT, 20);
+    }
+
+    #[test]
+    fn test_ssh_group_item_creation() {
+        let item = SshGroupItem {
+            name: "test-server".to_string(),
+            full_name: "production/test-server".to_string(),
+            connection_count: 5,
+            last_used: 1234567890,
+            host_config: SshHostConfig::default(),
+            comment: Some("Test server".to_string()),
+        };
+
+        assert_eq!(item.name, "test-server");
+        assert_eq!(item.full_name, "production/test-server");
+        assert_eq!(item.connection_count, 5);
+        assert_eq!(item.last_used, 1234567890);
+        assert_eq!(item.comment, Some("Test server".to_string()));
+    }
+
+    #[test]
+    fn test_ssh_group_item_no_comment() {
+        let item = SshGroupItem {
+            name: "test-server".to_string(),
+            full_name: "test-server".to_string(),
+            connection_count: 0,
+            last_used: 0,
+            host_config: SshHostConfig::default(),
+            comment: None,
+        };
+
+        assert_eq!(item.comment, None);
+    }
+
+    #[test]
+    fn test_ssh_group_creation() {
+        let group = SshGroup {
+            name: "Production".to_string(),
+            items: vec![],
+        };
+
+        assert_eq!(group.name, "Production");
+        assert_eq!(group.items.len(), 0);
+    }
+
+    #[test]
+    fn test_ssh_group_with_items() {
+        let item1 = SshGroupItem {
+            name: "server1".to_string(),
+            full_name: "server1".to_string(),
+            connection_count: 1,
+            last_used: 100,
+            host_config: SshHostConfig::default(),
+            comment: None,
+        };
+
+        let item2 = SshGroupItem {
+            name: "server2".to_string(),
+            full_name: "server2".to_string(),
+            connection_count: 2,
+            last_used: 200,
+            host_config: SshHostConfig::default(),
+            comment: None,
+        };
+
+        let group = SshGroup {
+            name: "Test".to_string(),
+            items: vec![item1, item2],
+        };
+
+        assert_eq!(group.items.len(), 2);
+        assert_eq!(group.items[0].name, "server1");
+        assert_eq!(group.items[1].name, "server2");
+    }
+
+    #[test]
+    fn test_get_comments_returns_hashmap() {
+        let config = SshConfig::default();
+        let comments = config.get_comments();
+        // Should return a HashMap (may contain actual comments from user's SSH config)
+        // Just verify it doesn't panic and returns a HashMap
+        let _ = comments.len();
+    }
+
+    #[test]
+    fn test_ssh_group_item_clone() {
+        let item = SshGroupItem {
+            name: "test".to_string(),
+            full_name: "test".to_string(),
+            connection_count: 5,
+            last_used: 123,
+            host_config: SshHostConfig::default(),
+            comment: Some("comment".to_string()),
+        };
+
+        let cloned = item.clone();
+        assert_eq!(item.name, cloned.name);
+        assert_eq!(item.full_name, cloned.full_name);
+        assert_eq!(item.connection_count, cloned.connection_count);
+        assert_eq!(item.last_used, cloned.last_used);
+        assert_eq!(item.comment, cloned.comment);
+    }
+}
