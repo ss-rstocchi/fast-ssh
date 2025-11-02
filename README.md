@@ -87,17 +87,24 @@ Recent connections are automatically excluded from search results.
 
 | Key                     | Action                                |
 | ----------------------- | ------------------------------------- |
-| ?                       | Display Shortcuts Panel               |
+| ?                       | Toggle Shortcuts Panel                |
+| q                       | Exit Fast-SSH                         |
 | Enter                   | Validate selection : Execute SSH cmd  |
 | Tab/BackTab             | Navigate through your groups          |
 | Left/Right Arrow or h/l | Navigate through your groups          |
+| Space                   | Select Recents Group                  |
 | Up/Down Arrow or k/j    | Navigate through your hosts           |
+| gg                      | Jump to First Host                    |
+| G                       | Jump to Last Host                     |
+| Ctrl+d                  | Scroll Half Page Down                 |
+| Ctrl+u                  | Scroll Half Page Up                   |
 | c                       | Switch Config display mode            |
 | Page Up/Down            | Scroll Configuration                  |
 | s or /                  | Enable Search Mode                    |
+| Enter (in search)       | Commit Search                         |
 | Esc or q                | Exit Search Mode                      |
+| n/N (in search)         | Next/Previous Match (after commit)    |
 | Alt+j/k                 | Navigate up/down while in Search Mode |
-| q                       | Exit Fast-SSH                         |
 | K                       | Copy SSH key and exit                 |
 | C                       | Copy files and exit                   |
 
