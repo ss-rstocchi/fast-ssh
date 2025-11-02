@@ -31,6 +31,13 @@ pub fn handle_inputs(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         } else if matches!(app.state, AppState::Searching) {
             // Handle navigation in search mode
             match key.code {
+                // Arrow keys for navigation in search mode
+                KeyCode::Down => {
+                    app.change_selected_item(true);
+                }
+                KeyCode::Up => {
+                    app.change_selected_item(false);
+                }
                 // Use Alt+j/k for navigation in search mode
                 KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::ALT) => {
                     app.change_selected_item(true);
@@ -38,8 +45,20 @@ pub fn handle_inputs(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::ALT) => {
                     app.change_selected_item(false);
                 }
+                // n/N for navigation in search mode (like Vim) - only after Enter is pressed
+                KeyCode::Char('n') if app.searcher.is_committed() => {
+                    app.change_selected_item(true);
+                }
+                KeyCode::Char('N') if app.searcher.is_committed() => {
+                    app.change_selected_item(false);
+                }
                 KeyCode::Enter => {
-                    if app.get_selected_item().is_some() {
+                    // If search is not committed, commit it (like Vim)
+                    if !app.searcher.is_committed() {
+                        app.searcher.commit_search();
+                        app.host_state.select(Some(0));
+                    } else if app.get_selected_item().is_some() {
+                        // If already committed, connect to selected host
                         app.should_spawn_ssh = true;
                     }
                 }
@@ -56,10 +75,15 @@ fn handle_input_search_mode(app: &mut App, key: KeyCode, modifiers: KeyModifiers
             app.searcher.clear_search();
             app.state = AppState::Normal;
         }
-        // Only add character to search if not using Alt modifier
-        // This allows Alt+j/k to be used for navigation in search mode
-        KeyCode::Char(c) if !modifiers.contains(KeyModifiers::ALT) => app.searcher.add_char(c),
-        KeyCode::Backspace => app.searcher.del_char(),
+        // Only allow typing if search is not committed
+        KeyCode::Char(c) if !app.searcher.is_committed() 
+                         && !modifiers.contains(KeyModifiers::ALT) 
+                         && !modifiers.contains(KeyModifiers::CONTROL) => {
+            app.searcher.add_char(c);
+        }
+        KeyCode::Backspace if !app.searcher.is_committed() => {
+            app.searcher.del_char();
+        }
         _ => {}
     }
 }

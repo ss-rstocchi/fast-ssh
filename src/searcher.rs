@@ -13,6 +13,7 @@ use tui::{
 pub struct Searcher {
     search_string: String,
     has_user_input: bool,
+    is_committed: bool,
 }
 
 impl Searcher {
@@ -20,7 +21,16 @@ impl Searcher {
         Searcher {
             search_string: String::new(),
             has_user_input: false,
+            is_committed: false,
         }
+    }
+
+    pub fn is_committed(&self) -> bool {
+        self.is_committed
+    }
+
+    pub fn commit_search(&mut self) {
+        self.is_committed = true;
     }
 
     pub fn get_filtered_items<'a>(&self, app: &'a App) -> Vec<&'a SshGroupItem> {
@@ -69,18 +79,39 @@ impl Searcher {
     pub fn clear_search(&mut self) {
         self.search_string.clear();
         self.has_user_input = false;
+        self.is_committed = false;
     }
 
     pub fn render(&self, _app: &App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
         let block = block::new(" Search ");
 
-        let spans = Spans::from(vec![
-            Span::styled(" > ", Style::default().fg(THEME.text_primary())),
-            Span::styled(
-                &self.search_string,
-                Style::default().add_modifier(Modifier::BOLD),
-            ),
-        ]);
+        let spans = if self.is_committed {
+            // Show navigation hint when committed
+            Spans::from(vec![
+                Span::styled(" > ", Style::default().fg(THEME.text_primary())),
+                Span::styled(
+                    &self.search_string,
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    " [n/N to navigate]",
+                    Style::default().fg(THEME.text_primary()).add_modifier(Modifier::DIM),
+                ),
+            ])
+        } else {
+            // Show typing mode
+            Spans::from(vec![
+                Span::styled(" > ", Style::default().fg(THEME.text_primary())),
+                Span::styled(
+                    &self.search_string,
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "_",
+                    Style::default().add_modifier(Modifier::SLOW_BLINK),
+                ),
+            ])
+        };
 
         let paragraph = Paragraph::new(spans).block(block);
 

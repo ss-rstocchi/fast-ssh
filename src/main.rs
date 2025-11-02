@@ -93,6 +93,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let selected_config = app.get_selected_item().unwrap();
         let host_name = &selected_config.full_name;
 
+        app.db.save_host_values(
+            host_name,
+            selected_config.connection_count + 1,
+            chrono::offset::Local::now().timestamp(),
+        )?;
+
         Command::new("ssh-copy-id")
             .arg(host_name.split(' ').take(1).collect::<Vec<&str>>().join(""))
             .spawn()?
@@ -102,6 +108,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if app.should_copy_files {
         let selected_config = app.get_selected_item().unwrap();
         let host_name = &selected_config.full_name;
+
+        app.db.save_host_values(
+            host_name,
+            selected_config.connection_count + 1,
+            chrono::offset::Local::now().timestamp(),
+        )?;
 
         Command::new("sftp")
             .arg(host_name.split(' ').take(1).collect::<Vec<&str>>().join(""))
