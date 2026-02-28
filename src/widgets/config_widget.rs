@@ -60,7 +60,7 @@ impl ConfigWidget {
             .wrap(Wrap { trim: false })
     }
 
-    fn ssh_group_item_to_spans(config: &SshGroupItem) -> Vec<Spans> {
+    fn ssh_group_item_to_spans(config: &SshGroupItem) -> Vec<Spans<'_>> {
         let theme = get_theme();
         let mut spans = Vec::new();
 
