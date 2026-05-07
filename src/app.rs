@@ -8,7 +8,6 @@ use crate::{
     ssh_config_store::{SshConfigStore, SshGroup, SshGroupItem},
 };
 
-// Default number of items to scroll when using half-page navigation
 const DEFAULT_HALF_PAGE_SIZE: usize = 10;
 
 pub enum ConfigDisplayMode {
@@ -34,9 +33,10 @@ pub struct App {
     pub should_copy_files: bool,
 
     pub config_paragraph_offset: u16,
+    pub hosts_area_height: u16,
     pub db: FileDatabase,
     pub show_help: bool,
-    pub pending_g: bool, // Track if 'g' was just pressed for 'gg' detection
+    pub pending_g: bool,
 }
 
 impl App {
@@ -48,6 +48,7 @@ impl App {
             state: AppState::Normal,
             selected_group: 0,
             config_paragraph_offset: 0,
+            hosts_area_height: 0,
             scs,
             host_state: TableState::default(),
             should_quit: false,
@@ -123,7 +124,7 @@ impl App {
                     .collect::<Vec<&SshGroupItem>>();
 
                 if selected_group.name != "Recents" {
-                    group_items.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                    group_items.sort_by_key(|a| a.name.to_lowercase());
                 }
 
                 group_items
@@ -135,12 +136,13 @@ impl App {
     }
 
     #[inline]
+    pub fn reset_config_scroll(&mut self) {
+        self.config_paragraph_offset = 0;
+    }
+
+    #[inline]
     pub fn change_selected_group(&mut self, rot_right: bool) {
         let items_len = self.scs.groups.len();
-        
-        // Assert preconditions
-        debug_assert!(items_len > 0, "groups should never be empty (validated in new())");
-        debug_assert!(self.selected_group < items_len, "selected_group index should be in bounds");
         
         // Guard against empty groups (should never happen in practice due to validation in new())
         if items_len == 0 {
@@ -152,22 +154,19 @@ impl App {
             true => (actual_idx + 1) % items_len,
             false => (actual_idx + items_len - 1) % items_len,
         };
+        self.reset_config_scroll();
     }
 
     #[inline]
     pub fn change_selected_item(&mut self, rot_right: bool) {
         let items_len = self.get_items_based_on_mode().len();
 
-        // Assert preconditions
-        debug_assert!(items_len < usize::MAX, "items_len should be reasonable");
-        
         if items_len == 0 {
             return;
         }
 
         let i = match self.host_state.selected() {
             Some(i) => {
-                debug_assert!(i < items_len, "selected index should be in bounds");
                 if rot_right {
                     (i + 1) % items_len
                 } else {
@@ -177,6 +176,7 @@ impl App {
             None => 0,
         };
         self.host_state.select(Some(i));
+        self.reset_config_scroll();
     }
 
     #[inline]
@@ -185,15 +185,13 @@ impl App {
             if first_group.name == "Recents" {
                 self.selected_group = 0;
                 self.host_state.select(Some(0));
+                self.reset_config_scroll();
             }
         }
     }
 
     #[inline]
     pub fn scroll_config_paragraph(&mut self, offset: i64) {
-        // Assert invariants and bounds
-        debug_assert!(offset.abs() < 10000, "offset should be reasonable");
-        
         let new_offset = (self.config_paragraph_offset as i64 + offset).max(0);
         self.config_paragraph_offset = new_offset.min(u16::MAX as i64) as u16;
     }
@@ -209,52 +207,47 @@ impl App {
     #[inline]
     pub fn jump_to_first_item(&mut self) {
         let items_len = self.get_items_based_on_mode().len();
-        
-        // Assert bounds
-        debug_assert!(items_len < usize::MAX, "items_len should be reasonable");
-        
         if items_len > 0 {
             self.host_state.select(Some(0));
+            self.reset_config_scroll();
         }
     }
 
     #[inline]
     pub fn jump_to_last_item(&mut self) {
         let items_len = self.get_items_based_on_mode().len();
-        
-        // Assert bounds
-        debug_assert!(items_len < usize::MAX, "items_len should be reasonable");
-        
         if items_len > 0 {
             self.host_state.select(Some(items_len - 1));
+            self.reset_config_scroll();
         }
     }
 
     #[inline]
     pub fn scroll_half_page(&mut self, down: bool) {
         let items_len = self.get_items_based_on_mode().len();
-        
-        // Assert preconditions and bounds
-        debug_assert!(items_len < usize::MAX, "items_len should be reasonable");
-        
+
         if items_len == 0 {
             return;
         }
 
-        // Use a reasonable half-page size (DEFAULT_HALF_PAGE_SIZE items)
-        let half_page = DEFAULT_HALF_PAGE_SIZE.min(items_len / 2).max(1);
-        
+        // Derive half-page from actual visible rows: each row takes 2 terminal lines,
+        // with 4 lines overhead (block border + header). Fall back to DEFAULT_HALF_PAGE_SIZE.
+        let half_page = if self.hosts_area_height > 4 {
+            ((self.hosts_area_height as usize - 4) / 2 / 2).max(1)
+        } else {
+            DEFAULT_HALF_PAGE_SIZE
+        }
+        .min(items_len);
+
         let current = self.host_state.selected().unwrap_or(0);
         let new_pos = if down {
             (current + half_page).min(items_len - 1)
         } else {
             current.saturating_sub(half_page)
         };
-        
-        // Assert postconditions
-        debug_assert!(new_pos < items_len, "new position should be in bounds");
-        
+
         self.host_state.select(Some(new_pos));
+        self.reset_config_scroll();
     }
 }
 

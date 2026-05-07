@@ -17,6 +17,7 @@ pub struct HostsWidget {}
 
 impl HostsWidget {
     pub fn render(app: &mut App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
+        app.hosts_area_height = area.height;
         let theme = get_theme();
         let block = block::new(" Hosts ");
         let header = HostsWidget::create_header();
@@ -78,7 +79,7 @@ impl HostsWidget {
         if item.last_used <= 0 {
             return "Never".to_string();
         }
-        
+
         // Safely convert i64 to u64, handling potential negative values
         match item.last_used.try_into() {
             Ok(secs) => {

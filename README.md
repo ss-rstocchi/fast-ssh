@@ -103,8 +103,7 @@ Recent connections are automatically excluded from search results.
 | s or /                  | Enable Search Mode                    |
 | Enter (in search)       | Commit Search                         |
 | Esc or q                | Exit Search Mode                      |
-| n/N (in search)         | Next/Previous Match (after commit)    |
-| Alt+j/k                 | Navigate up/down while in Search Mode |
+| j/k or Up/Down Arrow    | Navigate matches (after commit)       |
 | K                       | Copy SSH key and exit                 |
 | C                       | Copy files and exit                   |
 

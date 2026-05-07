@@ -1,4 +1,4 @@
-use crate::{app::App, get_theme, ssh_config_store::SshGroupItem, widgets::block};
+use crate::{app::App, get_theme, ssh_config_store::{SshGroupItem, RECENTS_GROUP}, widgets::block};
 use std::io::Stdout;
 use sublime_fuzzy::best_match;
 use tui::{
@@ -44,45 +44,42 @@ impl Searcher {
             return app.get_all_items_except_recents();
         }
 
-        app.get_all_items_except_recents()
-            .into_iter()
-            .filter(|item| {
-                // Check host name match
-                if best_match(&self.search_string, &item.full_name).is_some() {
-                    return true;
-                }
-
-                // Check hostname parameter match - use case-insensitive comparison without allocation
-                let has_hostname_match = item.host_config.iter().any(|(key, value)| {
-                    key.to_string().eq_ignore_ascii_case("hostname")
-                        && best_match(&self.search_string, value).is_some()
-                });
-                
-                if has_hostname_match {
-                    return true;
-                }
-
-                // Check notes/comments match
-                item.comment
-                    .as_ref()
-                    .is_some_and(|comment| best_match(&self.search_string, comment).is_some())
+        app.scs.groups
+            .iter()
+            .filter(|g| g.name != RECENTS_GROUP)
+            .flat_map(|group| {
+                let group_matches = best_match(&self.search_string, &group.name).is_some();
+                group.items.iter().filter(move |item| {
+                    group_matches || self.item_matches(item)
+                })
             })
             .collect()
     }
 
+    fn item_matches(&self, item: &SshGroupItem) -> bool {
+        if best_match(&self.search_string, &item.full_name).is_some() {
+            return true;
+        }
+
+        let has_hostname_match = item.host_config.iter().any(|(key, value)| {
+            key.to_string().eq_ignore_ascii_case("hostname")
+                && best_match(&self.search_string, value).is_some()
+        });
+
+        if has_hostname_match {
+            return true;
+        }
+
+        item.comment
+            .as_ref()
+            .is_some_and(|comment| best_match(&self.search_string, comment).is_some())
+    }
+
     pub fn add_char(&mut self, c: char) {
-        // Assert preconditions
-        debug_assert!(c.is_ascii() || c.len_utf8() <= 4, "char should be valid unicode");
-        debug_assert!(self.search_string.len() < 1000, "search string should be reasonable length");
-        
         self.search_string.push(c);
     }
 
     pub fn del_char(&mut self) {
-        // Assert state is valid before modification
-        // Note: Rust String is always valid UTF-8, pop() handles character boundaries
-        debug_assert!(self.search_string.len() < 1000, "search string should be reasonable length");
-        
         self.search_string.pop();
     }
 
@@ -103,7 +100,7 @@ impl Searcher {
                     Style::default().add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
-                    " [n/N to navigate]",
+                    " [j/k to navigate]",
                     Style::default().fg(get_theme().text_primary()).add_modifier(Modifier::DIM),
                 ),
             ])

@@ -42,6 +42,12 @@ pub fn get_theme() -> &'static Theme {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    std::panic::set_hook(Box::new(|info| {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen);
+        eprintln!("fast-ssh panicked: {}", info);
+    }));
+
     // Initialize configuration and theme
     get_theme();
 
@@ -103,10 +109,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         };
         
-        // Assert preconditions
-        debug_assert!(!selected_config.full_name.is_empty(), "host name should not be empty");
-        debug_assert!(selected_config.connection_count >= 0, "connection count should be non-negative");
-        
         let host_name = &selected_config.full_name;
 
         // Update database with connection info
@@ -116,11 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             chrono::offset::Local::now().timestamp(),
         )?;
 
-        // Extract the first part of the hostname (before any space)
         let host_arg = host_name.split_whitespace().next().unwrap_or(host_name);
-        
-        // Assert extracted host is valid
-        debug_assert!(!host_arg.is_empty(), "extracted host should not be empty");
 
         // Build and execute the command
         let mut command = Command::new(cmd);

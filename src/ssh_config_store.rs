@@ -1,6 +1,7 @@
 use crate::database::{FileDatabase, HostDatabaseEntry};
 use anyhow::{format_err, Result};
 use ssh_cfg::{SshConfig, SshConfigParser, SshHostConfig};
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fs::read_to_string;
@@ -149,8 +150,8 @@ impl SshConfigStore {
             }
         });
 
-        groups.reverse();
         self.groups = groups.into_iter().filter(|g| !g.items.is_empty()).collect();
+        self.groups.sort_by_key(|a| a.name.to_lowercase());
 
         // Create "Recents" group from used items
         let mut all_used_items: Vec<SshGroupItem> = self
@@ -160,7 +161,7 @@ impl SshConfigStore {
             .collect();
 
         if !all_used_items.is_empty() {
-            all_used_items.sort_unstable_by(|a, b| b.last_used.cmp(&a.last_used));
+            all_used_items.sort_unstable_by_key(|b| Reverse(b.last_used));
             all_used_items.truncate(RECENTS_LIMIT);
 
             self.groups.insert(

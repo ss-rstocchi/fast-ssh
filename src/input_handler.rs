@@ -83,6 +83,7 @@ fn handle_input_search_mode(app: &mut App, key: KeyCode, modifiers: KeyModifiers
     if matches!(key, KeyCode::Esc | KeyCode::Char('q')) {
         app.searcher.clear_search();
         app.state = AppState::Normal;
+        app.pending_g = false;
         return;
     }
 
@@ -123,17 +124,9 @@ fn handle_search_mode_navigation(app: &mut App, key: KeyCode, modifiers: KeyModi
         KeyCode::Down => app.change_selected_item(true),
         KeyCode::Up => app.change_selected_item(false),
         
-        // Alt+j/k for navigation
-        KeyCode::Char('j') if modifiers.contains(KeyModifiers::ALT) => {
-            app.change_selected_item(true);
-        }
-        KeyCode::Char('k') if modifiers.contains(KeyModifiers::ALT) => {
-            app.change_selected_item(false);
-        }
-        
-        // n/N for next/previous (vim-style)
-        KeyCode::Char('n') => app.change_selected_item(true),
-        KeyCode::Char('N') => app.change_selected_item(false),
+        // j/k for navigation
+        KeyCode::Char('j') => app.change_selected_item(true),
+        KeyCode::Char('k') => app.change_selected_item(false),
         
         _ => {
             // Handle common vim-like navigation
