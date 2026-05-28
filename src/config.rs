@@ -105,12 +105,11 @@ mod tests {
         let yaml = "theme:\n    text_primary: \"#ff0000\"";
         let config: Option<Config> = serde_yaml::from_str(yaml).expect("Failed to parse config");
         assert!(config.is_some());
-        
+
         let config = config.unwrap();
         assert_eq!(config.theme.text_primary(), tui::style::Color::Rgb(255, 0, 0));
-        // Other values should fall back to defaults
-        assert_eq!(config.theme.text_secondary(), tui::style::Color::Magenta);
-        assert_eq!(config.theme.border_color(), tui::style::Color::Magenta);
+        assert_eq!(config.theme.text_secondary(), tui::style::Color::White);
+        assert_eq!(config.theme.border_color(), tui::style::Color::Rgb(185, 103, 255));
     }
 
     #[test]

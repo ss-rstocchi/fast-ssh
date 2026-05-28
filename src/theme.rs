@@ -32,9 +32,9 @@ macro_rules! def_theme_struct_with_defaults {
 }
 
 def_theme_struct_with_defaults!(
-    text_primary => Color::White,
-    text_secondary => Color::Magenta,
-    border_color => Color::Magenta
+    text_primary => Color::Rgb(185, 103, 255),
+    text_secondary => Color::White,
+    border_color => Color::Rgb(185, 103, 255)
 );
 
 fn hex_to_color(hex: &str) -> Option<Color> {
@@ -134,9 +134,9 @@ mod tests {
     #[test]
     fn test_theme_default() {
         let theme = Theme::default();
-        assert_eq!(theme.text_primary(), Color::White);
-        assert_eq!(theme.text_secondary(), Color::Magenta);
-        assert_eq!(theme.border_color(), Color::Magenta);
+        assert_eq!(theme.text_primary(), Color::Rgb(185, 103, 255));
+        assert_eq!(theme.text_secondary(), Color::White);
+        assert_eq!(theme.border_color(), Color::Rgb(185, 103, 255));
     }
 
     #[test]
@@ -159,8 +159,8 @@ mod tests {
             border_color: None,
         };
         assert_eq!(theme.text_primary(), Color::Rgb(255, 0, 0));
-        assert_eq!(theme.text_secondary(), Color::Magenta); // Falls back to default
-        assert_eq!(theme.border_color(), Color::Magenta); // Falls back to default
+        assert_eq!(theme.text_secondary(), Color::White);
+        assert_eq!(theme.border_color(), Color::Rgb(185, 103, 255));
     }
 
     #[test]
@@ -177,7 +177,7 @@ mod tests {
         let yaml = "text_primary: \"#ff0000\"";
         let theme: Theme = serde_yaml::from_str(yaml).expect("Failed to deserialize theme");
         assert_eq!(theme.text_primary(), Color::Rgb(255, 0, 0));
-        assert_eq!(theme.text_secondary(), Color::Magenta); // Falls back to default
-        assert_eq!(theme.border_color(), Color::Magenta); // Falls back to default
+        assert_eq!(theme.text_secondary(), Color::White);
+        assert_eq!(theme.border_color(), Color::Rgb(185, 103, 255));
     }
 }
