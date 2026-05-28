@@ -7,7 +7,7 @@ pub struct FileDatabase {
     db: _FileDatabase<HashMap<String, HostDatabaseEntry>, Ron>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, Copy)]
 pub struct HostDatabaseEntry {
     pub connection_count: i64,
     pub last_used_date: i64,
@@ -21,23 +21,11 @@ impl FileDatabase {
             )
             .with_context(|| format!("Error while loading database from {}", filename))?;
 
-        db.load()?;
         Ok(FileDatabase { db })
     }
 
     pub fn get_host_values(&self, host_key: &str) -> Result<HostDatabaseEntry, RustbreakError> {
-        self.db.read(|db| {
-            let key_value = db.get_key_value(host_key);
-
-            if let Some(value) = key_value {
-                *value.1
-            } else {
-                HostDatabaseEntry {
-                    connection_count: 0,
-                    last_used_date: 0,
-                }
-            }
-        })
+        self.db.read(|db| db.get(host_key).copied().unwrap_or_default())
     }
 
     pub fn save_host_values(
@@ -78,14 +66,10 @@ mod tests {
     }
 
     #[test]
-    fn test_host_database_entry_creation() {
-        let entry = HostDatabaseEntry {
-            connection_count: 10,
-            last_used_date: 1234567890,
-        };
-
-        assert_eq!(entry.connection_count, 10);
-        assert_eq!(entry.last_used_date, 1234567890);
+    fn test_host_database_entry_default() {
+        let entry = HostDatabaseEntry::default();
+        assert_eq!(entry.connection_count, 0);
+        assert_eq!(entry.last_used_date, 0);
     }
 
     #[test]
@@ -94,8 +78,7 @@ mod tests {
             connection_count: 5,
             last_used_date: 9876543210,
         };
-
-        let cloned = entry;
+        let cloned = entry.clone();
         assert_eq!(entry.connection_count, cloned.connection_count);
         assert_eq!(entry.last_used_date, cloned.last_used_date);
     }

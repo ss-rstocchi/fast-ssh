@@ -1,4 +1,4 @@
-use crate::{get_theme, App};
+use crate::get_theme;
 use std::io::Stdout;
 use tui::{
     backend::CrosstermBackend,
@@ -14,7 +14,7 @@ use super::block;
 pub struct ShortcutsWidget {}
 
 impl ShortcutsWidget {
-    pub fn render(_app: &App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
+    pub fn render(area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
         let block = block::new(" Help ");
 
         let text = vec![

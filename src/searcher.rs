@@ -1,4 +1,5 @@
 use crate::{app::App, get_theme, ssh_config_store::{SshGroupItem, RECENTS_GROUP}, widgets::block};
+use ssh_cfg::SshOptionKey;
 use std::io::Stdout;
 use sublime_fuzzy::best_match;
 use tui::{
@@ -62,8 +63,7 @@ impl Searcher {
         }
 
         let has_hostname_match = item.host_config.iter().any(|(key, value)| {
-            key.to_string().eq_ignore_ascii_case("hostname")
-                && best_match(&self.search_string, value).is_some()
+            *key == SshOptionKey::Hostname && best_match(&self.search_string, value).is_some()
         });
 
         if has_hostname_match {
@@ -88,7 +88,7 @@ impl Searcher {
         self.is_committed = false;
     }
 
-    pub fn render(&self, _app: &App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
+    pub fn render(&self, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
         let block = block::new(" Search ");
 
         let spans = if self.is_committed {

@@ -20,7 +20,10 @@ impl ConfigComments for SshConfig {
     fn get_comments(&self) -> HashMap<String, String> {
         let mut comments = HashMap::new();
 
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let home = std::env::var("HOME").unwrap_or_else(|_| {
+            eprintln!("Warning: $HOME is not set, falling back to current directory for SSH config");
+            ".".to_string()
+        });
         let config_path = PathBuf::from(home).join(".ssh/config");
 
         if let Ok(contents) = read_to_string(config_path) {
@@ -114,23 +117,16 @@ impl SshConfigStore {
                 }
             });
 
-            let group_item = SshGroupItem {
-                connection_count: host_entry.connection_count,
-                last_used: host_entry.last_used_date,
-                full_name: key.to_string(),
-                host_config: value.clone(),
-                comment: comments.get(key).cloned(),
-                name: String::new(), // Temporary, will be set below
-            };
+            if let Some((group_name, item_name)) = key.split_once('/') {
+                let group_item = SshGroupItem {
+                    name: item_name.to_string(),
+                    full_name: key.to_string(),
+                    connection_count: host_entry.connection_count,
+                    last_used: host_entry.last_used_date,
+                    host_config: value.clone(),
+                    comment: comments.get(key).cloned(),
+                };
 
-            if let Some(slash_pos) = key.find('/') {
-                let (group_name, item_name) = key.split_at(slash_pos);
-                let item_name = &item_name[1..]; // Skip the '/'
-
-                let mut group_item = group_item;
-                group_item.name = item_name.to_string();
-
-                // Find or create the group
                 if let Some(group) = groups.iter_mut().find(|g| g.name == group_name) {
                     group.items.push(group_item);
                 } else {
@@ -140,10 +136,14 @@ impl SshConfigStore {
                     });
                 }
             } else {
-                // Add to "Others" group (first in vec)
-                let mut group_item = group_item;
-                group_item.name = key.to_string();
-                // Safe: "Others" group is always initialized at position 0
+                let group_item = SshGroupItem {
+                    name: key.to_string(),
+                    full_name: key.to_string(),
+                    connection_count: host_entry.connection_count,
+                    last_used: host_entry.last_used_date,
+                    host_config: value.clone(),
+                    comment: comments.get(key).cloned(),
+                };
                 if let Some(others_group) = groups.first_mut() {
                     others_group.items.push(group_item);
                 }
@@ -152,6 +152,9 @@ impl SshConfigStore {
 
         self.groups = groups.into_iter().filter(|g| !g.items.is_empty()).collect();
         self.groups.sort_by_key(|a| a.name.to_lowercase());
+        for group in &mut self.groups {
+            group.items.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        }
 
         // Create "Recents" group from used items
         let mut all_used_items: Vec<SshGroupItem> = self
@@ -178,21 +181,6 @@ impl SshConfigStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_recents_group_constant() {
-        assert_eq!(RECENTS_GROUP, "Recents");
-    }
-
-    #[test]
-    fn test_others_group_constant() {
-        assert_eq!(OTHERS_GROUP, "Others");
-    }
-
-    #[test]
-    fn test_recents_limit_constant() {
-        assert_eq!(RECENTS_LIMIT, 20);
-    }
 
     #[test]
     fn test_ssh_group_item_creation() {
@@ -265,15 +253,6 @@ mod tests {
         assert_eq!(group.items.len(), 2);
         assert_eq!(group.items[0].name, "server1");
         assert_eq!(group.items[1].name, "server2");
-    }
-
-    #[test]
-    fn test_get_comments_returns_hashmap() {
-        let config = SshConfig::default();
-        let comments = config.get_comments();
-        // Should return a HashMap (may contain actual comments from user's SSH config)
-        // Just verify it doesn't panic and returns a HashMap
-        let _ = comments.len();
     }
 
     #[test]

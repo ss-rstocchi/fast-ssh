@@ -31,7 +31,6 @@ pub fn create_layout(app: &App, frame: &mut Frame<CrosstermBackend<Stdout>>) -> 
 
     let chunks_top = Layout::default()
         .direction(Direction::Horizontal)
-        .margin(0)
         .constraints(
             [
                 Constraint::Percentage(80),

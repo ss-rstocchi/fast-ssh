@@ -1,4 +1,3 @@
-use crate::app::App;
 use crate::get_theme;
 use std::io::Stdout;
 use tui::{
@@ -10,7 +9,7 @@ use super::block;
 pub struct HelpWidget {}
 
 impl HelpWidget {
-    pub fn render(_app: &App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
+    pub fn render(area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
         let block = block::new("");
 
         let help_span = Spans::from("'?' Show help");

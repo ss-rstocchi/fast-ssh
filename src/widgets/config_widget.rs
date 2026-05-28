@@ -42,18 +42,15 @@ impl ConfigWidget {
     }
 
     fn get_paragraph_for_selected_mode<'a>(app: &'a App, block: Block<'a>) -> Paragraph<'a> {
-        let mut spans = vec![Spans::from(Span::styled(
-            "No item selected.\n",
-            Style::default()
-                .fg(get_theme().text_secondary())
-                .add_modifier(Modifier::BOLD),
-        ))];
-
-        let config = &app.get_selected_item();
-
-        if let Some(config) = config {
-            spans = ConfigWidget::ssh_group_item_to_spans(config);
-        }
+        let spans = match app.get_selected_item() {
+            Some(item) => ConfigWidget::ssh_group_item_to_spans(item),
+            None => vec![Spans::from(Span::styled(
+                "No item selected.\n",
+                Style::default()
+                    .fg(get_theme().text_secondary())
+                    .add_modifier(Modifier::BOLD),
+            ))],
+        };
 
         Paragraph::new(spans)
             .block(block)

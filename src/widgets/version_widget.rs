@@ -1,18 +1,16 @@
-use crate::app::App;
 use crate::get_theme;
 use std::io::Stdout;
 use tui::{
     backend::CrosstermBackend, layout::Rect, style::Style, text::Spans, widgets::Paragraph, Frame,
 };
 
+static VERSION_TEXT: &str = concat!("v", env!("CARGO_PKG_VERSION"));
+
 pub struct VersionWidget {}
 
 impl VersionWidget {
-    pub fn render(_app: &App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
-        let version = env!("CARGO_PKG_VERSION");
-        let version_text = format!("v{}", version);
-
-        let version_span = Spans::from(version_text);
+    pub fn render(area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
+        let version_span = Spans::from(VERSION_TEXT);
 
         let paragraph = Paragraph::new(version_span)
             .style(Style::default().fg(get_theme().text_secondary()))
