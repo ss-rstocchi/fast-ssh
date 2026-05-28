@@ -17,17 +17,11 @@ pub struct HostsWidget {}
 
 impl HostsWidget {
     pub fn render(app: &mut App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
-        app.hosts_area_height = area.height;
         let theme = get_theme();
         let block = block::new(" Hosts ");
         let header = HostsWidget::create_header();
         let items = app.get_items_based_on_mode();
         let rows = HostsWidget::create_rows_from_items(&items);
-
-        // Ensure selection is within bounds
-        if app.host_state.selected().unwrap_or(0) >= items.len() && !items.is_empty() {
-            app.host_state.select(Some(0));
-        }
 
         let t = Table::new(rows)
             .header(header)
@@ -80,14 +74,8 @@ impl HostsWidget {
             return "Never".to_string();
         }
 
-        // Safely convert i64 to u64, handling potential negative values
-        match item.last_used.try_into() {
-            Ok(secs) => {
-                let d = UNIX_EPOCH + Duration::from_secs(secs);
-                let dt = DateTime::<Utc>::from(d);
-                dt.format("%D %R").to_string()
-            }
-            Err(_) => "Invalid".to_string(),
-        }
+        let d = UNIX_EPOCH + Duration::from_secs(item.last_used as u64);
+        let dt = DateTime::<Utc>::from(d);
+        dt.format("%D %R").to_string()
     }
 }

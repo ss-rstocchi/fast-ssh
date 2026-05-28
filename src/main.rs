@@ -33,14 +33,13 @@ pub fn get_config() -> &'static Config {
     CONFIG.get_or_init(resolve_config)
 }
 
-// Re-export THEME for backwards compatibility
-pub static THEME: OnceLock<Theme> = OnceLock::new();
+static THEME: OnceLock<Theme> = OnceLock::new();
 
 pub fn get_theme() -> &'static Theme {
     THEME.get_or_init(|| get_config().theme)
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::panic::set_hook(Box::new(|info| {
         let _ = crossterm::terminal::disable_raw_mode();
@@ -64,27 +63,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.host_state.select(Some(0));
 
     loop {
+        app.clamp_host_selection();
+
+        let mut hosts_area_height: u16 = 0;
         terminal.draw(|frame| {
             let layout = create_layout(&app, frame);
+            hosts_area_height = layout.hosts_area.height;
 
             match app.state {
                 AppState::Normal => GroupsWidget::render(&app, layout.groups_area, frame),
-                AppState::Searching => app.searcher.render(&app, layout.groups_area, frame),
+                AppState::Searching => app.searcher.render(layout.groups_area, frame),
             };
 
-            HelpWidget::render(&app, layout.help_area, frame);
+            HelpWidget::render(layout.help_area, frame);
             HostsWidget::render(&mut app, layout.hosts_area, frame);
             ConfigWidget::render(&app, layout.config_area, frame);
-            VersionWidget::render(&app, layout.version_area, frame);
+            VersionWidget::render(layout.version_area, frame);
 
             if let Some(shortcuts_area) = layout.shortcuts_area {
-                ShortcutsWidget::render(&app, shortcuts_area, frame);
+                ShortcutsWidget::render(shortcuts_area, frame);
             }
         })?;
+        app.hosts_area_height = hosts_area_height;
 
         handle_inputs(&mut app)?;
 
-        if app.should_quit || app.should_spawn_ssh {
+        if app.should_quit || app.should_spawn_ssh || app.should_copy_ssh_key || app.should_copy_files {
             break;
         }
     }
@@ -118,7 +122,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             chrono::offset::Local::now().timestamp(),
         )?;
 
-        let host_arg = host_name.split_whitespace().next().unwrap_or(host_name);
+        let host_arg = host_name.as_str();
 
         // Build and execute the command
         let mut command = Command::new(cmd);

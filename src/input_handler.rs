@@ -3,15 +3,13 @@ use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use crate::app::{App, AppState};
 
 pub fn handle_inputs(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    if let Event::Key(key) = event::read()? {
-        match app.state {
-            AppState::Normal => {
-                handle_input_normal_mode(app, key.code, key.modifiers);
-            }
-            AppState::Searching => {
-                handle_input_search_mode(app, key.code, key.modifiers);
-            }
-        };
+    match event::read()? {
+        Event::Key(key) => match app.state {
+            AppState::Normal => handle_input_normal_mode(app, key.code, key.modifiers),
+            AppState::Searching => handle_input_search_mode(app, key.code, key.modifiers),
+        },
+        Event::Resize(_, _) => {}
+        _ => {}
     }
     Ok(())
 }
@@ -80,7 +78,7 @@ fn handle_normal_mode_navigation(app: &mut App, key: KeyCode, modifiers: KeyModi
 /// Handle input in search mode
 fn handle_input_search_mode(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
     // Exit search mode
-    if matches!(key, KeyCode::Esc | KeyCode::Char('q')) {
+    if matches!(key, KeyCode::Esc) {
         app.searcher.clear_search();
         app.state = AppState::Normal;
         app.pending_g = false;
@@ -120,18 +118,9 @@ fn handle_input_search_mode(app: &mut App, key: KeyCode, modifiers: KeyModifiers
 #[inline]
 fn handle_search_mode_navigation(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
     match key {
-        // Arrow keys always work
-        KeyCode::Down => app.change_selected_item(true),
-        KeyCode::Up => app.change_selected_item(false),
-        
-        // j/k for navigation
-        KeyCode::Char('j') => app.change_selected_item(true),
-        KeyCode::Char('k') => app.change_selected_item(false),
-        
-        _ => {
-            // Handle common vim-like navigation
-            handle_vim_navigation(app, key, modifiers);
-        }
+        KeyCode::Down | KeyCode::Char('j') => app.change_selected_item(true),
+        KeyCode::Up | KeyCode::Char('k') => app.change_selected_item(false),
+        _ => handle_vim_navigation(app, key, modifiers),
     }
 }
 
