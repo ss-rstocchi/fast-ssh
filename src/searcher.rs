@@ -45,34 +45,34 @@ impl Searcher {
             return app.get_all_items_except_recents();
         }
 
-        app.scs.groups
+        let mut scored: Vec<(isize, &SshGroupItem)> = app.scs.groups
             .iter()
             .filter(|g| g.name != RECENTS_GROUP)
             .flat_map(|group| {
-                let group_matches = best_match(&self.search_string, &group.name).is_some();
-                group.items.iter().filter(move |item| {
-                    group_matches || self.item_matches(item)
+                let group_score = best_match(&self.search_string, &group.name).map(|m| m.score());
+                group.items.iter().filter_map(move |item| {
+                    self.item_score(item).or(group_score).map(|s| (s, item))
                 })
             })
-            .collect()
+            .collect();
+
+        // Best match first; connection count breaks ties so daily hosts float up
+        scored.sort_by_key(|(score, item)| (-score, -item.connection_count));
+        scored.into_iter().map(|(_, item)| item).collect()
     }
 
-    fn item_matches(&self, item: &SshGroupItem) -> bool {
-        if best_match(&self.search_string, &item.full_name).is_some() {
-            return true;
-        }
+    fn item_score(&self, item: &SshGroupItem) -> Option<isize> {
+        let name = best_match(&self.search_string, &item.full_name).map(|m| m.score());
 
-        let has_hostname_match = item.host_config.iter().any(|(key, value)| {
-            *key == SshOptionKey::Hostname && best_match(&self.search_string, value).is_some()
-        });
+        let hostname = item.host_config.iter()
+            .filter(|(key, _)| **key == SshOptionKey::Hostname)
+            .filter_map(|(_, value)| best_match(&self.search_string, value).map(|m| m.score()))
+            .max();
 
-        if has_hostname_match {
-            return true;
-        }
+        let comment = item.comment.as_ref()
+            .and_then(|c| best_match(&self.search_string, c).map(|m| m.score()));
 
-        item.comment
-            .as_ref()
-            .is_some_and(|comment| best_match(&self.search_string, comment).is_some())
+        [name, hostname, comment].into_iter().flatten().max()
     }
 
     pub fn add_char(&mut self, c: char) {
@@ -196,6 +196,31 @@ mod tests {
         searcher.clear_search();
         assert_eq!(searcher.search_string, "");
         assert!(!searcher.is_committed());
+    }
+
+    #[test]
+    fn test_item_score_ranks_tight_match_higher() {
+        use crate::ssh_config_store::SshGroupItem;
+        use ssh_cfg::SshHostConfig;
+
+        let make = |full_name: &str| SshGroupItem {
+            name: full_name.to_string(),
+            full_name: full_name.to_string(),
+            connection_count: 0,
+            last_used: 0,
+            host_config: SshHostConfig::default(),
+            comment: None,
+        };
+
+        let mut searcher = Searcher::new();
+        for c in "prod".chars() {
+            searcher.add_char(c);
+        }
+
+        let tight = searcher.item_score(&make("prod-web-01")).unwrap();
+        let scattered = searcher.item_score(&make("deploy-runner-old")).unwrap();
+        assert!(tight > scattered);
+        assert!(searcher.item_score(&make("staging-db")).is_none());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use super::block;
-use crate::{app::App, get_theme, ssh_config_store::SshGroupItem};
-use chrono::{DateTime, Utc};
+use crate::{app::{App, AppState}, get_theme, ssh_config_store::SshGroupItem};
+use chrono::{DateTime, Local};
 use std::{
     io::Stdout,
     time::{Duration, UNIX_EPOCH},
@@ -21,7 +21,9 @@ impl HostsWidget {
         let block = block::new(" Hosts ");
         let header = HostsWidget::create_header();
         let items = app.get_items_based_on_mode();
-        let rows = HostsWidget::create_rows_from_items(&items);
+        // In search mode results span all groups, so show "group/name" to disambiguate
+        let use_full_name = matches!(app.state, AppState::Searching);
+        let rows = HostsWidget::create_rows_from_items(&items, use_full_name);
 
         let t = Table::new(rows)
             .header(header)
@@ -51,15 +53,16 @@ impl HostsWidget {
             .bottom_margin(1)
     }
 
-    fn create_rows_from_items(items: &[&SshGroupItem]) -> Vec<Row<'static>> {
+    fn create_rows_from_items(items: &[&SshGroupItem], use_full_name: bool) -> Vec<Row<'static>> {
         let style = Style::default();
         items
             .iter()
             .map(|item| {
                 let timestamp_str = HostsWidget::format_last_used_date(item);
+                let name = if use_full_name { &item.full_name } else { &item.name };
 
                 let cells = [
-                    Cell::from(item.name.to_string()).style(style),
+                    Cell::from(name.to_string()).style(style),
                     Cell::from(timestamp_str).style(style),
                     Cell::from(item.connection_count.to_string()).style(style),
                 ];
@@ -75,7 +78,7 @@ impl HostsWidget {
         }
 
         let d = UNIX_EPOCH + Duration::from_secs(item.last_used as u64);
-        let dt = DateTime::<Utc>::from(d);
+        let dt = DateTime::<Local>::from(d);
         dt.format("%D %R").to_string()
     }
 }
