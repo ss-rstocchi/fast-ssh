@@ -176,7 +176,7 @@ impl App {
     #[inline]
     pub fn select_recents_group(&mut self) {
         if let Some(first_group) = self.scs.groups.first() {
-            if first_group.name == "Recents" {
+            if first_group.name == crate::ssh_config_store::RECENTS_GROUP {
                 self.selected_group = 0;
                 self.host_state.select(Some(0));
                 self.reset_config_scroll();

@@ -153,7 +153,7 @@ impl SshConfigStore {
         self.groups = groups.into_iter().filter(|g| !g.items.is_empty()).collect();
         self.groups.sort_by_key(|a| a.name.to_lowercase());
         for group in &mut self.groups {
-            group.items.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+            group.items.sort_by_key(|a| a.name.to_lowercase());
         }
 
         // Create "Recents" group from used items

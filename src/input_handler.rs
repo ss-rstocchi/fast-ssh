@@ -4,6 +4,14 @@ use crate::app::{App, AppState};
 
 pub fn handle_inputs(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     match event::read()? {
+        // Raw mode swallows SIGINT, so Ctrl+C must be handled here or it's
+        // dead in search mode and toggles the config pane in normal mode
+        Event::Key(key)
+            if key.code == KeyCode::Char('c')
+                && key.modifiers.contains(KeyModifiers::CONTROL) =>
+        {
+            app.should_quit = true;
+        }
         Event::Key(key) => match app.state {
             AppState::Normal => handle_input_normal_mode(app, key.code, key.modifiers),
             AppState::Searching => handle_input_search_mode(app, key.code, key.modifiers),

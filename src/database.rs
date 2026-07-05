@@ -78,7 +78,7 @@ mod tests {
             connection_count: 5,
             last_used_date: 9876543210,
         };
-        let cloned = entry.clone();
+        let cloned = entry;
         assert_eq!(entry.connection_count, cloned.connection_count);
         assert_eq!(entry.last_used_date, cloned.last_used_date);
     }
