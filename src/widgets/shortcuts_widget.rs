@@ -41,9 +41,9 @@ impl ShortcutsWidget {
             Spans::from(""),
             Spans::from("=== Search Mode ==="),
             Spans::from("'s' or '/': Enable Search Mode"),
-            Spans::from("'Enter': Commit Search (press again to connect)"),
-            Spans::from("'Esc' or 'q': Exit Search Mode"),
-            Spans::from("'Up/Down Arrow or j/k': Navigate Matches (after commit)"),
+            Spans::from("'Enter': Connect to Highlighted Host"),
+            Spans::from("'Up/Down Arrow or Ctrl+j/k': Navigate Matches"),
+            Spans::from("'Esc': Exit Search Mode"),
         ];
 
         let paragraph = Paragraph::new(text)

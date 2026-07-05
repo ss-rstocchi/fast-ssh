@@ -28,7 +28,10 @@ fn handle_input_normal_mode(app: &mut App, key: KeyCode, modifiers: KeyModifiers
     match key {
         KeyCode::Char('c') => app.toggle_config_display_mode(),
         KeyCode::Char('?') => app.show_help = !app.show_help,
-        KeyCode::Char('s') | KeyCode::Char('/') => app.state = AppState::Searching,
+        KeyCode::Char('s') | KeyCode::Char('/') => {
+            app.state = AppState::Searching;
+            app.host_state.select(Some(0));
+        }
         KeyCode::Char('q') => app.should_quit = true,
         KeyCode::Char('K') => {
             if app.get_selected_item().is_some() {
@@ -83,52 +86,38 @@ fn handle_normal_mode_navigation(app: &mut App, key: KeyCode, modifiers: KeyModi
     }
 }
 
-/// Handle input in search mode
+/// Handle input in search mode: typing filters live, arrows move the
+/// selection, Enter connects to the highlighted (top-ranked) result
 fn handle_input_search_mode(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
-    // Exit search mode
-    if matches!(key, KeyCode::Esc) {
-        app.searcher.clear_search();
-        app.state = AppState::Normal;
-        app.pending_g = false;
-        return;
-    }
-
-    // Handle Enter key for search commit or connection
-    if key == KeyCode::Enter {
-        if !app.searcher.is_committed() {
-            app.searcher.commit_search();
-            app.host_state.select(Some(0));
-        } else if app.get_selected_item().is_some() {
-            app.should_spawn_ssh = true;
-        }
-        app.pending_g = false;
-        return;
-    }
-
-    // Only allow typing if search is not committed
-    if !app.searcher.is_committed() {
-        match key {
-            KeyCode::Char(c) if !modifiers.intersects(KeyModifiers::ALT | KeyModifiers::CONTROL) => {
-                app.searcher.add_char(c);
-            }
-            KeyCode::Backspace => {
-                app.searcher.del_char();
-            }
-            _ => {}
-        }
-    } else {
-        // When search is committed, handle navigation
-        handle_search_mode_navigation(app, key, modifiers);
-    }
-}
-
-/// Handle navigation when search is committed
-#[inline]
-fn handle_search_mode_navigation(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
     match key {
-        KeyCode::Down | KeyCode::Char('j') => app.change_selected_item(true),
-        KeyCode::Up | KeyCode::Char('k') => app.change_selected_item(false),
-        _ => handle_vim_navigation(app, key, modifiers),
+        KeyCode::Esc => {
+            app.searcher.clear_search();
+            app.state = AppState::Normal;
+            app.pending_g = false;
+        }
+        KeyCode::Enter => {
+            if app.get_selected_item().is_some() {
+                app.should_spawn_ssh = true;
+            }
+        }
+        KeyCode::Down => app.change_selected_item(true),
+        KeyCode::Up => app.change_selected_item(false),
+        KeyCode::Char('j' | 'n') if modifiers.contains(KeyModifiers::CONTROL) => {
+            app.change_selected_item(true)
+        }
+        KeyCode::Char('k' | 'p') if modifiers.contains(KeyModifiers::CONTROL) => {
+            app.change_selected_item(false)
+        }
+        KeyCode::Char(c) if !modifiers.intersects(KeyModifiers::ALT | KeyModifiers::CONTROL) => {
+            app.searcher.add_char(c);
+            // Ranking changed, so the old selection is meaningless
+            app.host_state.select(Some(0));
+        }
+        KeyCode::Backspace => {
+            app.searcher.del_char();
+            app.host_state.select(Some(0));
+        }
+        _ => {}
     }
 }
 
