@@ -73,7 +73,7 @@ This database is used to store the number of connections to a service and the da
 
 ## Search Mode
 
-Fast-SSH implements a search mode ( fuzzy ) that allows you to type to find one of your hosts. To use it, press `s`, start typing, finish your selection with the arrow keys then press enter once the host is selected to make the SSH connection. Press ESC if you wish to leave the search mode and return to the "groups" mode.
+Fast-SSH implements a search mode ( fuzzy ) that allows you to type to find one of your hosts. To use it, press `s` or `/`, start typing, and results are ranked with the best match pre-selected. Press enter to connect to it, or move the selection with the arrow keys (or Ctrl+j/k) first. Press ESC if you wish to leave the search mode and return to the "groups" mode.
 
 The search function looks for matches in:
 
@@ -101,9 +101,9 @@ Recent connections are automatically excluded from search results.
 | c                       | Switch Config display mode            |
 | Page Up/Down            | Scroll Configuration                  |
 | s or /                  | Enable Search Mode                    |
-| Enter (in search)       | Commit Search                         |
-| Esc or q                | Exit Search Mode                      |
-| j/k or Up/Down Arrow    | Navigate matches (after commit)       |
+| Enter (in search)       | Connect to highlighted host           |
+| Esc                     | Exit Search Mode                      |
+| Up/Down or Ctrl+j/k     | Navigate matches                      |
 | K                       | Copy SSH key and exit                 |
 | C                       | Copy files and exit                   |
 
