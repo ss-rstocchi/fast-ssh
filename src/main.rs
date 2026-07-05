@@ -115,6 +115,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         let host_name = &selected_config.full_name;
 
+        // A leading '-' would be parsed as an ssh/sftp option, not a hostname
+        if host_name.starts_with('-') {
+            eprintln!("Error: refusing to connect to host starting with '-': {}", host_name);
+            return Ok(());
+        }
+
         // Update database with connection info
         app.db.save_host_values(
             host_name,
