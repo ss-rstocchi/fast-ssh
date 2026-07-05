@@ -42,7 +42,7 @@ impl ShortcutsWidget {
             Spans::from("=== Search Mode ==="),
             Spans::from("'s' or '/': Enable Search Mode"),
             Spans::from("'Enter': Connect to Highlighted Host"),
-            Spans::from("'Up/Down Arrow or Ctrl+j/k': Navigate Matches"),
+            Spans::from("'Up/Down Arrow, Ctrl+j/k or Ctrl+n/p': Navigate Matches"),
             Spans::from("'Esc': Exit Search Mode"),
         ];
 
