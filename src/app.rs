@@ -1,10 +1,12 @@
 use anyhow::{format_err, Context, Result};
+use std::cell::OnceCell;
 use std::fs;
+use tui::text::Spans;
 use tui::widgets::TableState;
 
 use crate::{
     database::FileDatabase,
-    searcher::Searcher,
+    searcher::{rank_matches, Searcher},
     ssh_config_store::{SshConfigStore, SshGroup, SshGroupItem},
 };
 
@@ -25,6 +27,9 @@ pub struct App {
     pub searcher: Searcher,
     pub selected_group: usize,
     pub host_state: TableState,
+    /// First visible row of the hosts table; tracked here because
+    /// `TableState::offset` is private in tui 0.19.
+    pub hosts_offset: usize,
     pub scs: SshConfigStore,
     pub config_display_mode: ConfigDisplayMode,
     pub should_quit: bool,
@@ -37,6 +42,13 @@ pub struct App {
     pub db: FileDatabase,
     pub show_help: bool,
     pub pending_g: bool,
+
+    /// `(group index, item index)` pairs of the current search results.
+    /// Recomputed only when the query changes, so rendering never re-runs the
+    /// fuzzy search.
+    search_matches: Vec<(usize, usize)>,
+    /// Rendered spans for the global config view, built once per session.
+    pub global_config_spans: OnceCell<Vec<Spans<'static>>>,
 }
 
 impl App {
@@ -49,6 +61,7 @@ impl App {
             selected_group: 0,
             config_paragraph_offset: 0,
             hosts_area_height: 0,
+            hosts_offset: 0,
             scs,
             host_state: TableState::default(),
             should_quit: false,
@@ -60,6 +73,8 @@ impl App {
             searcher: Searcher::new(),
             show_help: false,
             pending_g: false,
+            search_matches: Vec::new(),
+            global_config_spans: OnceCell::new(),
         })
     }
 
@@ -85,19 +100,55 @@ impl App {
         self.scs.groups.get(self.selected_group)
     }
 
+    /// Number of items in the list currently displayed by the hosts table.
     #[inline]
-    pub fn get_selected_item(&self) -> Option<&SshGroupItem> {
-        let items = self.get_items_based_on_mode();
-        self.host_state.selected().and_then(|idx| items.get(idx).copied())
+    pub fn items_len(&self) -> usize {
+        match self.state {
+            AppState::Normal => self
+                .get_selected_group()
+                .map_or(0, |group| group.items.len()),
+            AppState::Searching => self.search_matches.len(),
+        }
     }
 
     #[inline]
-    pub fn get_all_items(&self) -> Vec<&SshGroupItem> {
-        self.scs
-            .groups
-            .iter()
-            .flat_map(|group| &group.items)
-            .collect::<Vec<&SshGroupItem>>()
+    pub fn get_selected_item(&self) -> Option<&SshGroupItem> {
+        let index = self.host_state.selected()?;
+
+        match self.state {
+            AppState::Normal => self.get_selected_group()?.items.get(index),
+            AppState::Searching => {
+                let (group_idx, item_idx) = *self.search_matches.get(index)?;
+                self.scs.groups.get(group_idx)?.items.get(item_idx)
+            }
+        }
+    }
+
+    /// Items in the visible window `[start, end)` of the current list.
+    #[inline]
+    pub fn get_items_range(&self, start: usize, end: usize) -> Vec<&SshGroupItem> {
+        match self.state {
+            AppState::Normal => {
+                let items: &[SshGroupItem] = match self.get_selected_group() {
+                    Some(group) => &group.items,
+                    None => &[],
+                };
+                items
+                    .get(start.min(items.len())..end.min(items.len()))
+                    .unwrap_or_default()
+                    .iter()
+                    .collect()
+            }
+            AppState::Searching => self
+                .search_matches
+                .get(start..end)
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|&(group_idx, item_idx)| {
+                    self.scs.groups.get(group_idx)?.items.get(item_idx)
+                })
+                .collect(),
+        }
     }
 
     #[inline]
@@ -110,22 +161,51 @@ impl App {
             .collect()
     }
 
-    pub fn get_items_based_on_mode(&self) -> Vec<&SshGroupItem> {
-        match self.state {
-            AppState::Normal => {
-                let Some(selected_group) = self.get_selected_group() else {
-                    return Vec::new();
-                };
-                selected_group.items.iter().collect()
-            }
-            AppState::Searching => self.searcher.get_filtered_items(self),
-        }
+    pub fn enter_search_mode(&mut self) {
+        self.state = AppState::Searching;
+        self.recompute_search_matches();
+        self.host_state.select(Some(0));
+        self.hosts_offset = 0;
+        self.reset_config_scroll();
+    }
+
+    pub fn exit_search_mode(&mut self) {
+        self.searcher.clear_search();
+        self.state = AppState::Normal;
+        self.search_matches.clear();
+        self.pending_g = false;
+        self.hosts_offset = 0;
+    }
+
+    pub fn search_add_char(&mut self, c: char) {
+        self.searcher.add_char(c);
+        self.recompute_search_matches();
+        self.host_state.select(Some(0));
+        self.hosts_offset = 0;
+        self.reset_config_scroll();
+    }
+
+    pub fn search_del_char(&mut self) {
+        self.searcher.del_char();
+        self.recompute_search_matches();
+        self.host_state.select(Some(0));
+        self.hosts_offset = 0;
+        self.reset_config_scroll();
+    }
+
+    fn recompute_search_matches(&mut self) {
+        self.search_matches = if matches!(self.state, AppState::Searching) {
+            rank_matches(self.searcher.search_string(), &self.scs.groups)
+        } else {
+            Vec::new()
+        };
     }
 
     pub fn clamp_host_selection(&mut self) {
-        let items_len = self.get_items_based_on_mode().len();
+        let items_len = self.items_len();
         if items_len > 0 && self.host_state.selected().unwrap_or(0) >= items_len {
             self.host_state.select(Some(0));
+            self.hosts_offset = 0;
         }
     }
 
@@ -137,7 +217,7 @@ impl App {
     #[inline]
     pub fn change_selected_group(&mut self, rot_right: bool) {
         let items_len = self.scs.groups.len();
-        
+
         // Guard against empty groups (should never happen in practice due to validation in new())
         if items_len == 0 {
             return;
@@ -148,12 +228,14 @@ impl App {
             true => (actual_idx + 1) % items_len,
             false => (actual_idx + items_len - 1) % items_len,
         };
+        self.host_state.select(Some(0));
+        self.hosts_offset = 0;
         self.reset_config_scroll();
     }
 
     #[inline]
     pub fn change_selected_item(&mut self, rot_right: bool) {
-        let items_len = self.get_items_based_on_mode().len();
+        let items_len = self.items_len();
 
         if items_len == 0 {
             return;
@@ -179,6 +261,7 @@ impl App {
             if first_group.name == crate::ssh_config_store::RECENTS_GROUP {
                 self.selected_group = 0;
                 self.host_state.select(Some(0));
+                self.hosts_offset = 0;
                 self.reset_config_scroll();
             }
         }
@@ -200,16 +283,17 @@ impl App {
 
     #[inline]
     pub fn jump_to_first_item(&mut self) {
-        let items_len = self.get_items_based_on_mode().len();
+        let items_len = self.items_len();
         if items_len > 0 {
             self.host_state.select(Some(0));
+            self.hosts_offset = 0;
             self.reset_config_scroll();
         }
     }
 
     #[inline]
     pub fn jump_to_last_item(&mut self) {
-        let items_len = self.get_items_based_on_mode().len();
+        let items_len = self.items_len();
         if items_len > 0 {
             self.host_state.select(Some(items_len - 1));
             self.reset_config_scroll();
@@ -218,7 +302,7 @@ impl App {
 
     #[inline]
     pub fn scroll_half_page(&mut self, down: bool) {
-        let items_len = self.get_items_based_on_mode().len();
+        let items_len = self.items_len();
 
         if items_len == 0 {
             return;
@@ -244,4 +328,3 @@ impl App {
         self.reset_config_scroll();
     }
 }
-

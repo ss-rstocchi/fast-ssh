@@ -30,13 +30,16 @@ impl ConfigWidget {
     }
 
     fn get_paragraph_for_global_mode<'a>(app: &'a App, block: Block<'a>) -> Paragraph<'a> {
-        let spans: Vec<Spans> = app
-            .get_all_items()
-            .iter()
-            .flat_map(|item| ConfigWidget::ssh_group_item_to_spans(item))
-            .collect();
+        // The global view is static for the whole session, so build it once
+        // instead of re-formatting every host on every frame.
+        let spans = app.global_config_spans.get_or_init(|| {
+            app.get_all_items_except_recents()
+                .into_iter()
+                .flat_map(ConfigWidget::ssh_group_item_to_owned_spans)
+                .collect()
+        });
 
-        Paragraph::new(spans)
+        Paragraph::new(spans.clone())
             .block(block)
             .wrap(Wrap { trim: false })
     }
@@ -55,6 +58,21 @@ impl ConfigWidget {
         Paragraph::new(spans)
             .block(block)
             .wrap(Wrap { trim: false })
+    }
+
+    fn ssh_group_item_to_owned_spans(config: &SshGroupItem) -> Vec<Spans<'static>> {
+        ConfigWidget::ssh_group_item_to_spans(config)
+            .into_iter()
+            .map(|spans| {
+                Spans::from(
+                    spans
+                        .0
+                        .into_iter()
+                        .map(|span| Span::styled(span.content.into_owned(), span.style))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect()
     }
 
     fn ssh_group_item_to_spans(config: &SshGroupItem) -> Vec<Spans<'_>> {
@@ -94,9 +112,10 @@ impl ConfigWidget {
         });
 
         if let Some(comment) = &config.comment {
-            spans.push(Spans::from(vec![
-                Span::styled("  Notes", Style::default().fg(theme.text_primary())),
-            ]));
+            spans.push(Spans::from(vec![Span::styled(
+                "  Notes",
+                Style::default().fg(theme.text_primary()),
+            )]));
 
             for line in comment.lines() {
                 spans.push(Spans::from(vec![
