@@ -75,11 +75,15 @@ This database is used to store the number of connections to a service and the da
 
 Fast-SSH implements a search mode ( fuzzy ) that allows you to type to find one of your hosts. To use it, press `s` or `/`, start typing, and results are ranked with the best match pre-selected. Press enter to connect to it, or move the selection with the arrow keys (or Ctrl+j/k, Ctrl+n/p) first. Press ESC if you wish to leave the search mode and return to the "groups" mode.
 
+The query is split into space-separated tokens and every token must match, so `prod db` finds `Prod/db-01` even when `prod` only appears in the group name. Results are ranked by match quality plus how often and how recently you connected, so hosts you use daily float to the top. Matched characters are highlighted and the search bar shows how many hosts match.
+
 The search function looks for matches in:
 
 - Host names
 - Hostnames (IP/domain)
+- Users
 - Notes/comments
+- Group names
 
 Recent connections are automatically excluded from search results.
 
