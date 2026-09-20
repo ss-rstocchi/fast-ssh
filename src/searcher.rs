@@ -102,8 +102,10 @@ impl Searcher {
 ///
 /// `query` is split on whitespace and every token must match the item's short
 /// name, hostname, user or comment, or the group name, in any order. Matching
-/// the short name keeps the `group/` prefix from skewing scores. `now` is a
-/// Unix timestamp used to boost frequently/recently used hosts (frecency).
+/// the short name keeps the `group/` prefix from skewing scores. Hosts in a
+/// group whose name matches the query exactly or as a prefix are ranked before
+/// every other match, so typing a group name surfaces that group first. `now`
+/// is a Unix timestamp used to boost frequently/recently used hosts (frecency).
 pub fn rank_matches(query: &str, groups: &[SshGroup], now: i64) -> Vec<(usize, usize)> {
     let tokens: Vec<&str> = query.split_whitespace().collect();
 
@@ -118,25 +120,43 @@ pub fn rank_matches(query: &str, groups: &[SshGroup], now: i64) -> Vec<(usize, u
             .collect();
     }
 
-    let mut scored: Vec<(isize, i64, (usize, usize))> = Vec::new();
+    let mut scored: Vec<(u8, isize, i64, (usize, usize))> = Vec::new();
 
     for (group_idx, group) in groups.iter().enumerate() {
         if group.name == RECENTS_GROUP {
             continue;
         }
 
+        // 0 = the group name matches the query, 1 = it does not
+        let priority = u8::from(!group_matches(&tokens, &group.name));
+
         for (item_idx, item) in group.items.iter().enumerate() {
             let Some(fuzzy_score) = match_tokens(&tokens, item, &group.name) else {
                 continue;
             };
             let total = fuzzy_score + frecency_bonus(item, now);
-            scored.push((total, item.connection_count, (group_idx, item_idx)));
+            scored.push((
+                priority,
+                total,
+                item.connection_count,
+                (group_idx, item_idx),
+            ));
         }
     }
 
-    // Best match first; connection count breaks exact ties
-    scored.sort_by_key(|(total, connection_count, _)| (-total, -connection_count));
-    scored.into_iter().map(|(_, _, idx)| idx).collect()
+    // Group matches first, then best score; connection count breaks exact ties
+    scored.sort_by_key(|(priority, total, connection_count, _)| {
+        (*priority, -total, -connection_count)
+    });
+    scored.into_iter().map(|(_, _, _, idx)| idx).collect()
+}
+
+/// Whether any query token is a case-insensitive prefix of the group name.
+fn group_matches(tokens: &[&str], group_name: &str) -> bool {
+    let group_name = group_name.to_lowercase();
+    tokens
+        .iter()
+        .any(|token| group_name.starts_with(&token.to_lowercase()))
 }
 
 /// Sums the best score of every token; `None` if any token matches nothing.
@@ -357,6 +377,30 @@ mod tests {
         assert_eq!(rank_matches("prod db", &groups, 0), vec![(0, 0)]);
         assert_eq!(rank_matches("db prod", &groups, 0), vec![(0, 0)]);
         assert!(rank_matches("prod db web", &groups, 0).is_empty());
+    }
+
+    #[test]
+    fn test_rank_matches_group_prefix_priority() {
+        let now = 1_800_000_000;
+        let groups = vec![
+            make_group(
+                "LLM",
+                vec![make_item("worker-0", 0), make_item("worker-1", 0)],
+            ),
+            make_group(
+                "Team",
+                vec![make_item("llm-service", 0), make_item("llm-proxy", 0)],
+            ),
+        ];
+
+        // Typing the group name (or a prefix of it) surfaces that group first,
+        // even though the `llm-*` names score higher on their own.
+        let expected = vec![(0, 0), (0, 1), (1, 0), (1, 1)];
+        assert_eq!(rank_matches("llm", &groups, now), expected);
+        assert_eq!(rank_matches("LL", &groups, now), expected);
+
+        // A more specific token is not a group match, so only the name matches
+        assert_eq!(rank_matches("llm-service", &groups, now), vec![(1, 0)]);
     }
 
     #[test]
