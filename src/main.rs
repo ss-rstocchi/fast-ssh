@@ -16,7 +16,7 @@ mod widgets;
 use app::{App, AppState};
 use config::{resolve_config, Config};
 use input_handler::handle_inputs;
-use term::{init_terminal, restore_terminal};
+use term::TerminalGuard;
 use theme::Theme;
 use widgets::{
     config_widget::ConfigWidget, groups_widget::GroupsWidget, help_widget::HelpWidget,
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let mut terminal = init_terminal()?;
+    let mut terminal = TerminalGuard::new()?;
 
     app.host_state.select(Some(0));
 
@@ -66,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         app.clamp_host_selection();
 
         let mut hosts_area_height: u16 = 0;
-        terminal.draw(|frame| {
+        terminal.terminal().draw(|frame| {
             let layout = create_layout(&app, frame);
             hosts_area_height = layout.hosts_area.height;
 
@@ -88,12 +88,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         handle_inputs(&mut app)?;
 
-        if app.should_quit || app.should_spawn_ssh || app.should_copy_ssh_key || app.should_copy_files {
+        if app.should_quit
+            || app.should_spawn_ssh
+            || app.should_copy_ssh_key
+            || app.should_copy_files
+        {
             break;
         }
     }
 
-    restore_terminal(&mut terminal)?;
+    terminal.restore()?;
 
     // Execute the command based on the app state
     let command = if app.should_spawn_ssh {
@@ -112,12 +116,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("Error: No host selected");
             return Ok(());
         };
-        
+
         let host_name = &selected_config.full_name;
 
         // A leading '-' would be parsed as an ssh/sftp option, not a hostname
         if host_name.starts_with('-') {
-            eprintln!("Error: refusing to connect to host starting with '-': {}", host_name);
+            eprintln!(
+                "Error: refusing to connect to host starting with '-': {}",
+                host_name
+            );
             return Ok(());
         }
 
@@ -132,7 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Build and execute the command
         let mut command = Command::new(cmd);
-        
+
         // Add SSH-specific options
         if cmd == "ssh" {
             command
@@ -141,7 +148,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .arg("-o")
                 .arg(SSH_KEEP_ALIVE_INTERVAL);
         }
-        
+
         command.arg(host_arg).spawn()?.wait()?;
     }
 
