@@ -72,7 +72,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             match app.state {
                 AppState::Normal => GroupsWidget::render(&app, layout.groups_area, frame),
-                AppState::Searching => app.searcher.render(layout.groups_area, frame),
+                AppState::Searching => {
+                    app.searcher
+                        .render(layout.groups_area, frame, app.search_result_count())
+                }
             };
 
             HelpWidget::render(layout.help_area, frame);

@@ -195,10 +195,17 @@ impl App {
 
     fn recompute_search_matches(&mut self) {
         self.search_matches = if matches!(self.state, AppState::Searching) {
-            rank_matches(self.searcher.search_string(), &self.scs.groups)
+            let now = chrono::offset::Local::now().timestamp();
+            rank_matches(self.searcher.search_string(), &self.scs.groups, now)
         } else {
             Vec::new()
         };
+    }
+
+    /// Number of hosts matching the current search query.
+    #[inline]
+    pub fn search_result_count(&self) -> usize {
+        self.search_matches.len()
     }
 
     pub fn clamp_host_selection(&mut self) {

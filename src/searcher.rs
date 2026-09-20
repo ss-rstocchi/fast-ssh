@@ -15,6 +15,14 @@ use tui::{
     Frame,
 };
 
+/// Maximum connection count that still earns a frecency bonus.
+const FRECENCY_COUNT_CAP: i64 = 10;
+/// Score added per capped connection.
+const FRECENCY_COUNT_WEIGHT: isize = 2;
+/// `(max age in days, bonus)`; the first matching bucket wins.
+const RECENCY_BONUSES: [(i64, isize); 4] = [(1, 30), (7, 20), (30, 10), (180, 5)];
+const SECONDS_PER_DAY: i64 = 86_400;
+
 pub struct Searcher {
     search_string: String,
 }
@@ -48,25 +56,42 @@ impl Searcher {
         self.search_string.clear();
     }
 
-    pub fn render(&self, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
+    pub fn render(
+        &self,
+        area: Rect,
+        frame: &mut Frame<CrosstermBackend<Stdout>>,
+        result_count: usize,
+    ) {
         let block = block::new(" Search ");
+        let theme = get_theme();
+        let hint_style = Style::default()
+            .fg(theme.text_primary())
+            .add_modifier(Modifier::DIM);
 
-        let spans = Spans::from(vec![
-            Span::styled(" > ", Style::default().fg(get_theme().text_primary())),
+        let mut spans = vec![
+            Span::styled(" > ", Style::default().fg(theme.text_primary())),
             Span::styled(
                 &self.search_string,
                 Style::default().add_modifier(Modifier::BOLD),
             ),
             Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
-            Span::styled(
-                " [↑↓ navigate · Enter connect]",
-                Style::default()
-                    .fg(get_theme().text_primary())
-                    .add_modifier(Modifier::DIM),
-            ),
-        ]);
+        ];
 
-        let paragraph = Paragraph::new(spans).block(block);
+        if !self.search_string.is_empty() {
+            let noun = if result_count == 1 {
+                "match"
+            } else {
+                "matches"
+            };
+            spans.push(Span::styled(
+                format!("  [{} {}]", result_count, noun),
+                hint_style,
+            ));
+        }
+
+        spans.push(Span::styled(" [↑↓ navigate · Enter connect]", hint_style));
+
+        let paragraph = Paragraph::new(Spans::from(spans)).block(block);
 
         frame.render_widget(paragraph, area);
     }
@@ -74,8 +99,15 @@ impl Searcher {
 
 /// Returns `(group index, item index)` pairs for every host matching `query`,
 /// ranked best-first. Recents are excluded. An empty query matches every host.
-pub fn rank_matches(query: &str, groups: &[SshGroup]) -> Vec<(usize, usize)> {
-    if query.is_empty() {
+///
+/// `query` is split on whitespace and every token must match the item's short
+/// name, hostname, user or comment, or the group name, in any order. Matching
+/// the short name keeps the `group/` prefix from skewing scores. `now` is a
+/// Unix timestamp used to boost frequently/recently used hosts (frecency).
+pub fn rank_matches(query: &str, groups: &[SshGroup], now: i64) -> Vec<(usize, usize)> {
+    let tokens: Vec<&str> = query.split_whitespace().collect();
+
+    if tokens.is_empty() {
         return groups
             .iter()
             .enumerate()
@@ -93,34 +125,110 @@ pub fn rank_matches(query: &str, groups: &[SshGroup]) -> Vec<(usize, usize)> {
             continue;
         }
 
-        let group_score = best_match(query, &group.name).map(|m| m.score());
-
         for (item_idx, item) in group.items.iter().enumerate() {
-            if let Some(score) = item_score(query, item).or(group_score) {
-                scored.push((score, item.connection_count, (group_idx, item_idx)));
-            }
+            let Some(fuzzy_score) = match_tokens(&tokens, item, &group.name) else {
+                continue;
+            };
+            let total = fuzzy_score + frecency_bonus(item, now);
+            scored.push((total, item.connection_count, (group_idx, item_idx)));
         }
     }
 
-    // Best match first; connection count breaks ties so daily hosts float up
-    scored.sort_by_key(|(score, connection_count, _)| (-score, -connection_count));
+    // Best match first; connection count breaks exact ties
+    scored.sort_by_key(|(total, connection_count, _)| (-total, -connection_count));
     scored.into_iter().map(|(_, _, idx)| idx).collect()
 }
 
-fn item_score(query: &str, item: &SshGroupItem) -> Option<isize> {
-    let name = best_match(query, &item.full_name).map(|m| m.score());
+/// Sums the best score of every token; `None` if any token matches nothing.
+fn match_tokens(tokens: &[&str], item: &SshGroupItem, group_name: &str) -> Option<isize> {
+    let mut total = 0;
+
+    for token in tokens {
+        total += token_score(token, item, group_name)?;
+    }
+
+    Some(total)
+}
+
+/// Best score for a single token across the item's fields, falling back to the
+/// group name when no field matches.
+fn token_score(token: &str, item: &SshGroupItem, group_name: &str) -> Option<isize> {
+    item_score(token, item).or_else(|| best_match(token, group_name).map(|m| m.score()))
+}
+
+fn item_score(token: &str, item: &SshGroupItem) -> Option<isize> {
+    let name = best_match(token, &item.name).map(|m| m.score());
 
     let hostname = item
         .host_config
         .get(&SshOptionKey::Hostname)
-        .and_then(|value| best_match(query, value).map(|m| m.score()));
+        .and_then(|value| best_match(token, value).map(|m| m.score()));
+
+    let user = item
+        .host_config
+        .get(&SshOptionKey::User)
+        .and_then(|value| best_match(token, value).map(|m| m.score()));
 
     let comment = item
         .comment
         .as_ref()
-        .and_then(|c| best_match(query, c).map(|m| m.score()));
+        .and_then(|c| best_match(token, c).map(|m| m.score()));
 
-    [name, hostname, comment].into_iter().flatten().max()
+    [name, hostname, user, comment].into_iter().flatten().max()
+}
+
+/// Bonus for hosts that are used often and recently, so daily drivers float up.
+fn frecency_bonus(item: &SshGroupItem, now: i64) -> isize {
+    let count = item.connection_count.clamp(0, FRECENCY_COUNT_CAP) * FRECENCY_COUNT_WEIGHT as i64;
+    let mut bonus = count as isize;
+
+    if item.last_used > 0 {
+        let age_days = now.saturating_sub(item.last_used).max(0) / SECONDS_PER_DAY;
+
+        for (max_age_days, value) in RECENCY_BONUSES {
+            if age_days < max_age_days {
+                bonus += value;
+                break;
+            }
+        }
+    }
+
+    bonus
+}
+
+/// Char indices in `target` matched by any whitespace-separated token of
+/// `query`, sorted and deduplicated. Used to highlight search results.
+pub fn highlight_indices(query: &str, item: &SshGroupItem) -> Vec<usize> {
+    // For grouped hosts the displayed name is `group/short-name`; match the
+    // group prefix and the short name separately so the highlighted characters
+    // agree with how ranking scored the item.
+    let (group, offset) = match item.full_name.split_once('/') {
+        Some((group, _)) => (Some(group), group.chars().count() + 1),
+        None => (None, 0),
+    };
+
+    let mut indices = Vec::new();
+
+    for token in query.split_whitespace() {
+        if let Some(group) = group {
+            if let Some(group_match) = best_match(token, group) {
+                indices.extend(group_match.matched_indices().copied());
+            }
+        }
+
+        if let Some(name_match) = best_match(token, &item.name) {
+            indices.extend(
+                name_match
+                    .matched_indices()
+                    .copied()
+                    .map(|idx| idx + offset),
+            );
+        }
+    }
+
+    indices.sort_unstable();
+    indices.dedup();
+    indices
 }
 
 #[cfg(test)]
@@ -215,9 +323,9 @@ mod tests {
             make_group("Prod", vec![make_item("prod-web", 0)]),
         ];
 
-        assert_eq!(rank_matches("", &groups), vec![(1, 0)]);
-        assert_eq!(rank_matches("prod", &groups), vec![(1, 0)]);
-        assert!(rank_matches("recent", &groups).is_empty());
+        assert_eq!(rank_matches("", &groups, 0), vec![(1, 0)]);
+        assert_eq!(rank_matches("prod", &groups, 0), vec![(1, 0)]);
+        assert!(rank_matches("recent", &groups, 0).is_empty());
     }
 
     #[test]
@@ -230,15 +338,96 @@ mod tests {
             ],
         )];
 
-        // "prod" matches prod-web-01 tightly; deploy-runner-old matches the group name
-        assert_eq!(rank_matches("prod", &groups), vec![(0, 1), (0, 0)]);
+        // "prod" matches prod-web-01 tightly; deploy-runner-old only matches loosely
+        assert_eq!(rank_matches("prod", &groups, 0), vec![(0, 1), (0, 0)]);
 
         // Equal scores fall back to connection count, highest first
         let groups = vec![make_group(
             "Prod",
             vec![make_item("prod-a", 1), make_item("prod-b", 9)],
         )];
-        assert_eq!(rank_matches("prod", &groups), vec![(0, 1), (0, 0)]);
+        assert_eq!(rank_matches("prod", &groups, 0), vec![(0, 1), (0, 0)]);
+    }
+
+    #[test]
+    fn test_rank_matches_multi_token_cross_field() {
+        // "prod" only matches the group name, "db" only the host name
+        let groups = vec![make_group("Prod", vec![make_item("db-01", 0)])];
+
+        assert_eq!(rank_matches("prod db", &groups, 0), vec![(0, 0)]);
+        assert_eq!(rank_matches("db prod", &groups, 0), vec![(0, 0)]);
+        assert!(rank_matches("prod db web", &groups, 0).is_empty());
+    }
+
+    #[test]
+    fn test_rank_matches_frecency_floats_used_host() {
+        let now = 1_000_000_000;
+        let groups = vec![make_group(
+            "Prod",
+            vec![
+                make_item("prod-a", 0),
+                SshGroupItem {
+                    last_used: now - 60,
+                    ..make_item("prod-b", 0)
+                },
+            ],
+        )];
+
+        // Same fuzzy score; the recently used host wins
+        assert_eq!(rank_matches("prod", &groups, now), vec![(0, 1), (0, 0)]);
+    }
+
+    #[test]
+    fn test_frecency_bonus_decays() {
+        let now = 1_000_000_000;
+
+        let recent = SshGroupItem {
+            last_used: now - 60,
+            ..make_item("a", 0)
+        };
+        let week = SshGroupItem {
+            last_used: now - 2 * SECONDS_PER_DAY,
+            ..make_item("a", 0)
+        };
+        let month = SshGroupItem {
+            last_used: now - 10 * SECONDS_PER_DAY,
+            ..make_item("a", 0)
+        };
+        let old = SshGroupItem {
+            last_used: now - 200 * SECONDS_PER_DAY,
+            ..make_item("a", 0)
+        };
+
+        assert_eq!(frecency_bonus(&recent, now), 30);
+        assert_eq!(frecency_bonus(&week, now), 20);
+        assert_eq!(frecency_bonus(&month, now), 10);
+        assert_eq!(frecency_bonus(&old, now), 0);
+        assert_eq!(frecency_bonus(&make_item("a", 0), now), 0);
+        assert_eq!(frecency_bonus(&make_item("a", 100), now), 20);
+    }
+
+    #[test]
+    fn test_highlight_indices_union_of_tokens() {
+        let item = make_item("ab-cd", 0);
+        assert_eq!(highlight_indices("ab", &item), vec![0, 1]);
+        assert_eq!(highlight_indices("ab cd", &item), vec![0, 1, 3, 4]);
+        assert!(highlight_indices("", &item).is_empty());
+        assert!(highlight_indices("zz", &item).is_empty());
+    }
+
+    #[test]
+    fn test_highlight_indices_group_prefix() {
+        let mut item = make_item("db-01", 0);
+        item.full_name = "Prod/db-01".to_string();
+
+        // "prod" matches the group prefix, "db" the short name
+        assert_eq!(highlight_indices("prod db", &item), vec![0, 1, 2, 3, 5, 6]);
+    }
+
+    #[test]
+    fn test_highlight_indices_unicode_char_positions() {
+        let item = make_item("こんにちは", 0);
+        assert_eq!(highlight_indices("ち", &item), vec![3]);
     }
 
     #[test]
