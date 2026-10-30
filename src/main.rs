@@ -44,7 +44,11 @@ pub fn get_theme() -> &'static Theme {
 async fn main() -> Result<()> {
     std::panic::set_hook(Box::new(|info| {
         let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen);
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::terminal::LeaveAlternateScreen,
+            crossterm::cursor::Show
+        );
         eprintln!("fast-ssh panicked: {}", info);
     }));
 
