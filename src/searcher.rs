@@ -1,6 +1,6 @@
 use crate::{
     get_theme,
-    ssh_config_store::{SshGroup, SshGroupItem, RECENTS_GROUP},
+    ssh_config_store::{SshGroup, SshGroupItem, OTHERS_GROUP, RECENTS_GROUP},
     widgets::block,
 };
 use std::io::Stdout;
@@ -103,7 +103,8 @@ impl Searcher {
 /// name, hostname, user or comment, or the group name, in any order. Matching
 /// the short name keeps the `group/` prefix from skewing scores. Hosts in a
 /// group whose name matches the query exactly or as a prefix are ranked before
-/// every other match, so typing a group name surfaces that group first. `now`
+/// every other match, so typing a group name surfaces that group first. The
+/// synthetic "Others" group of ungrouped hosts never matches by name. `now`
 /// is a Unix timestamp used to boost frequently/recently used hosts (frecency).
 pub fn rank_matches(query: &str, groups: &[SshGroup], now: i64) -> Vec<(usize, usize)> {
     let tokens: Vec<&str> = query.split_whitespace().collect();
@@ -126,11 +127,13 @@ pub fn rank_matches(query: &str, groups: &[SshGroup], now: i64) -> Vec<(usize, u
             continue;
         }
 
+        let group_name = (group.name != OTHERS_GROUP).then_some(group.name.as_str());
+
         // 0 = the group name matches the query, 1 = it does not
-        let priority = u8::from(!group_matches(&tokens, &group.name));
+        let priority = u8::from(!group_name.is_some_and(|name| group_matches(&tokens, name)));
 
         for (item_idx, item) in group.items.iter().enumerate() {
-            let Some(fuzzy_score) = match_tokens(&tokens, item, &group.name) else {
+            let Some(fuzzy_score) = match_tokens(&tokens, item, group_name) else {
                 continue;
             };
             let total = fuzzy_score + frecency_bonus(item, now);
@@ -159,7 +162,7 @@ fn group_matches(tokens: &[&str], group_name: &str) -> bool {
 }
 
 /// Sums the best score of every token; `None` if any token matches nothing.
-fn match_tokens(tokens: &[&str], item: &SshGroupItem, group_name: &str) -> Option<isize> {
+fn match_tokens(tokens: &[&str], item: &SshGroupItem, group_name: Option<&str>) -> Option<isize> {
     let mut total = 0;
 
     for token in tokens {
@@ -171,8 +174,9 @@ fn match_tokens(tokens: &[&str], item: &SshGroupItem, group_name: &str) -> Optio
 
 /// Best score for a single token across the item's fields, falling back to the
 /// group name when no field matches.
-fn token_score(token: &str, item: &SshGroupItem, group_name: &str) -> Option<isize> {
-    item_score(token, item).or_else(|| best_match(token, group_name).map(|m| m.score()))
+fn token_score(token: &str, item: &SshGroupItem, group_name: Option<&str>) -> Option<isize> {
+    item_score(token, item)
+        .or_else(|| group_name.and_then(|group| best_match(token, group).map(|m| m.score())))
 }
 
 fn item_score(token: &str, item: &SshGroupItem) -> Option<isize> {
@@ -465,6 +469,19 @@ mod tests {
 
         // "prod" matches the group prefix, "db" the short name
         assert_eq!(highlight_indices("prod db", &item), vec![0, 1, 2, 3, 5, 6]);
+    }
+
+    #[test]
+    fn test_rank_matches_others_group_name_never_matches() {
+        let groups = vec![
+            make_group(OTHERS_GROUP, vec![make_item("db-01", 0)]),
+            make_group("Prod", vec![make_item("web-other", 0)]),
+        ];
+
+        // "other" matches only a real host name, not the synthetic group
+        assert_eq!(rank_matches("other", &groups, 0), vec![(1, 0)]);
+        // A prefix of "Others" neither matches nor prioritizes ungrouped hosts
+        assert_eq!(rank_matches("o", &groups, 0), vec![(1, 0)]);
     }
 
     #[test]
