@@ -18,19 +18,45 @@ use super::block;
 pub struct ConfigWidget {}
 
 impl ConfigWidget {
-    pub fn render(app: &App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
+    pub fn render(app: &mut App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
         let block = block::new(" Configuration ");
+        // Inside the block borders
+        let inner_width = area.width.saturating_sub(2);
+        let inner_height = area.height.saturating_sub(2);
 
         let lines = match app.config_display_mode {
             ConfigMode::Selected => ConfigWidget::lines_for_selected_mode(app),
             ConfigMode::Global => ConfigWidget::lines_for_global_mode(app),
         };
 
+        // Stop scrolling once the end of the content is on screen
+        let max_offset =
+            ConfigWidget::wrapped_height(&lines, inner_width).saturating_sub(inner_height);
+        let offset = app.config_paragraph_offset.min(max_offset);
+
         let paragraph = Paragraph::new(lines)
             .block(block)
             .wrap(Wrap { trim: false })
-            .scroll((app.config_paragraph_offset, 0));
+            .scroll((offset, 0));
         frame.render_widget(paragraph, area);
+
+        app.config_paragraph_offset = offset;
+    }
+
+    /// Upper bound of the rendered height of `lines` wrapped to `width`.
+    /// Word wrapping can need one more row than a character split, so every
+    /// wrapped line counts one extra row; overshooting only leaves blank
+    /// space at the bottom, undershooting would hide content.
+    fn wrapped_height(lines: &[Spans], width: u16) -> u16 {
+        let width = usize::from(width.max(1));
+        let rows: usize = lines
+            .iter()
+            .map(|line| match line.width() {
+                w if w <= width => 1,
+                w => w.div_ceil(width) + 1,
+            })
+            .sum();
+        rows.min(usize::from(u16::MAX)) as u16
     }
 
     fn lines_for_global_mode(app: &App) -> Vec<Spans<'_>> {

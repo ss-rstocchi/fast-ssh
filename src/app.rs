@@ -282,6 +282,7 @@ impl App {
             ConfigDisplayMode::Global => ConfigDisplayMode::Selected,
             ConfigDisplayMode::Selected => ConfigDisplayMode::Global,
         };
+        self.reset_config_scroll();
     }
 
     #[inline]
