@@ -40,8 +40,7 @@ pub fn get_theme() -> &'static Theme {
     THEME.get_or_init(|| get_config().theme)
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     std::panic::set_hook(Box::new(|info| {
         let _ = crossterm::terminal::disable_raw_mode();
         let _ = crossterm::execute!(
@@ -55,7 +54,7 @@ async fn main() -> Result<()> {
     // Initialize configuration and theme
     get_theme();
 
-    let mut app = match App::new().await {
+    let mut app = match App::new() {
         Ok(app) => app,
         Err(e) => {
             eprintln!("{}", e);
