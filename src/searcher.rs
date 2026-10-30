@@ -96,18 +96,139 @@ impl Searcher {
     }
 }
 
+/// How a query token matched a field, best first. Ranking compares tiers
+/// before fuzzy scores, so an exact or prefix match always beats a scattered
+/// fuzzy one regardless of how `sublime_fuzzy` scores them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Tier {
+    Exact,
+    Prefix,
+    /// Contiguous match starting after a separator, e.g. `web` in `api-web-01`
+    WordStart,
+    Substring,
+    Fuzzy,
+}
+
+/// Field of a host a token can match, in tie-break preference order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Field {
+    Name,
+    HostName,
+    User,
+    Comment,
+    Group,
+}
+
+#[derive(Debug)]
+struct FieldMatch {
+    tier: Tier,
+    score: isize,
+    /// Matched char indices within the field
+    indices: Vec<usize>,
+}
+
+impl FieldMatch {
+    /// Whether `self` is a strictly better match than `other`.
+    fn beats(&self, other: &FieldMatch) -> bool {
+        (self.tier, -self.score) < (other.tier, -other.score)
+    }
+}
+
+/// Matches a single (case-insensitive) token against one field value.
+fn match_field(token: &[char], value: &str) -> Option<FieldMatch> {
+    // One lowercase char per original char keeps indices aligned with `value`
+    let field: Vec<char> = value.chars().map(lowercase_char).collect();
+    let fuzzy = best_match(&token.iter().collect::<String>(), value)?;
+    let score = fuzzy.score();
+
+    let contiguous = |tier: Tier, start: usize| FieldMatch {
+        tier,
+        score,
+        indices: (start..start + token.len()).collect(),
+    };
+
+    if field == token {
+        return Some(contiguous(Tier::Exact, 0));
+    }
+
+    let mut first_occurrence = None;
+    for start in 0..field.len().saturating_sub(token.len() - 1) {
+        if field[start..start + token.len()] != *token {
+            continue;
+        }
+        if start == 0 {
+            return Some(contiguous(Tier::Prefix, 0));
+        }
+        if !field[start - 1].is_alphanumeric() {
+            return Some(contiguous(Tier::WordStart, start));
+        }
+        first_occurrence.get_or_insert(start);
+    }
+
+    Some(match first_occurrence {
+        Some(start) => contiguous(Tier::Substring, start),
+        None => FieldMatch {
+            tier: Tier::Fuzzy,
+            score,
+            indices: fuzzy.matched_indices().copied().collect(),
+        },
+    })
+}
+
+/// Best field match for one lowercased token; earlier fields win ties.
+fn best_field(
+    token: &[char],
+    item: &SshGroupItem,
+    group_name: Option<&str>,
+) -> Option<(Field, FieldMatch)> {
+    let fields = [
+        (Field::Name, Some(item.name.as_str())),
+        (Field::HostName, item.host_config.get("HostName")),
+        (Field::User, item.host_config.get("User")),
+        (Field::Comment, item.comment.as_deref()),
+        (Field::Group, group_name),
+    ];
+
+    let mut best: Option<(Field, FieldMatch)> = None;
+    for (field, value) in fields {
+        let Some(found) = value.and_then(|value| match_field(token, value)) else {
+            continue;
+        };
+        if best
+            .as_ref()
+            .is_none_or(|(_, current)| found.beats(current))
+        {
+            best = Some((field, found));
+        }
+    }
+    best
+}
+
+/// First char of the lowercase form, so char indices stay aligned.
+fn lowercase_char(c: char) -> char {
+    c.to_lowercase().next().unwrap_or(c)
+}
+
+fn lowercase_tokens(query: &str) -> Vec<Vec<char>> {
+    query
+        .split_whitespace()
+        .map(|token| token.chars().map(lowercase_char).collect())
+        .collect()
+}
+
 /// Returns `(group index, item index)` pairs for every host matching `query`,
 /// ranked best-first. Recents are excluded. An empty query matches every host.
 ///
 /// `query` is split on whitespace and every token must match the item's short
-/// name, hostname, user or comment, or the group name, in any order. Matching
-/// the short name keeps the `group/` prefix from skewing scores. Hosts in a
-/// group whose name matches the query exactly or as a prefix are ranked before
-/// every other match, so typing a group name surfaces that group first. The
-/// synthetic "Others" group of ungrouped hosts never matches by name. `now`
-/// is a Unix timestamp used to boost frequently/recently used hosts (frecency).
+/// name, hostname, user or comment, or its group name, in any order. Each token
+/// is ranked by its best field: exact, then prefix, then word-start, then
+/// substring, then fuzzy. Hosts are ordered by the sum of their tokens' tiers,
+/// then by fuzzy score plus a frecency bonus, then by connection count. Typing
+/// a group name therefore surfaces that group as an exact match. The synthetic
+/// "Others" group of ungrouped hosts never matches by name. `now` is a Unix
+/// timestamp used for the frecency bonus.
 pub fn rank_matches(query: &str, groups: &[SshGroup], now: i64) -> Vec<(usize, usize)> {
-    let tokens: Vec<&str> = query.split_whitespace().collect();
+    let tokens = lowercase_tokens(query);
 
     if tokens.is_empty() {
         return groups
@@ -120,8 +241,7 @@ pub fn rank_matches(query: &str, groups: &[SshGroup], now: i64) -> Vec<(usize, u
             .collect();
     }
 
-    let lowercase_tokens: Vec<String> = tokens.iter().map(|t| t.to_lowercase()).collect();
-    let mut scored: Vec<(u8, isize, i64, (usize, usize))> = Vec::new();
+    let mut scored: Vec<(usize, isize, i64, (usize, usize))> = Vec::new();
 
     for (group_idx, group) in groups.iter().enumerate() {
         if group.name == RECENTS_GROUP {
@@ -130,77 +250,25 @@ pub fn rank_matches(query: &str, groups: &[SshGroup], now: i64) -> Vec<(usize, u
 
         let group_name = (group.name != OTHERS_GROUP).then_some(group.name.as_str());
 
-        // 0 = the group name matches the query, 1 = it does not
-        let priority =
-            u8::from(!group_name.is_some_and(|name| group_matches(&lowercase_tokens, name)));
+        'items: for (item_idx, item) in group.items.iter().enumerate() {
+            let mut tiers = 0;
+            let mut score = frecency_bonus(item, now);
 
-        for (item_idx, item) in group.items.iter().enumerate() {
-            let Some(fuzzy_score) = match_tokens(&tokens, item, group_name) else {
-                continue;
-            };
-            let total = fuzzy_score + frecency_bonus(item, now);
-            scored.push((
-                priority,
-                total,
-                item.connection_count,
-                (group_idx, item_idx),
-            ));
+            for token in &tokens {
+                let Some((_, found)) = best_field(token, item, group_name) else {
+                    continue 'items;
+                };
+                tiers += found.tier as usize;
+                score += found.score;
+            }
+
+            scored.push((tiers, score, item.connection_count, (group_idx, item_idx)));
         }
     }
 
-    // Group matches first, then best score; connection count breaks exact ties
-    scored.sort_by_key(|(priority, total, connection_count, _)| {
-        (*priority, -total, -connection_count)
-    });
+    // Stable sort, so equal hosts keep config order
+    scored.sort_by_key(|(tiers, score, connection_count, _)| (*tiers, -score, -connection_count));
     scored.into_iter().map(|(_, _, _, idx)| idx).collect()
-}
-
-/// Whether any (lowercased) query token is a case-insensitive prefix of the
-/// group name.
-fn group_matches(lowercase_tokens: &[String], group_name: &str) -> bool {
-    let group_name = group_name.to_lowercase();
-    lowercase_tokens
-        .iter()
-        .any(|token| group_name.starts_with(token.as_str()))
-}
-
-/// Sums the best score of every token; `None` if any token matches nothing.
-fn match_tokens(tokens: &[&str], item: &SshGroupItem, group_name: Option<&str>) -> Option<isize> {
-    let mut total = 0;
-
-    for token in tokens {
-        total += token_score(token, item, group_name)?;
-    }
-
-    Some(total)
-}
-
-/// Best score for a single token across the item's fields, falling back to the
-/// group name when no field matches.
-fn token_score(token: &str, item: &SshGroupItem, group_name: Option<&str>) -> Option<isize> {
-    item_score(token, item)
-        .or_else(|| group_name.and_then(|group| best_match(token, group).map(|m| m.score())))
-}
-
-fn item_score(token: &str, item: &SshGroupItem) -> Option<isize> {
-    let name = best_match(token, &item.name).map(|m| m.score());
-
-    let hostname = item
-        .host_config
-        .get("HostName")
-        .and_then(|value| best_match(token, value).map(|m| m.score()));
-
-    let user = item
-        .host_config
-        .get("User")
-        .and_then(|value| best_match(token, value).map(|m| m.score()));
-
-    let comment = item
-        .comment
-        .as_ref()
-        .and_then(|c| best_match(token, c).map(|m| m.score()));
-
-    [name, hostname, user, comment].into_iter().flatten().max()
 }
 
 /// Bonus for hosts that are used often and recently, so daily drivers float up.
@@ -224,9 +292,8 @@ fn frecency_bonus(item: &SshGroupItem, now: i64) -> isize {
 
 /// Char indices in the item's `full_name` matched by the whitespace-separated
 /// tokens of `query`, sorted and deduplicated. Used to highlight search
-/// results. A token is highlighted only where it scored during ranking: in
-/// the short name when that was its best field, in the group prefix when no
-/// item field matched, and not at all when it matched hostname/user/comment.
+/// results. A token is highlighted only in the field it ranked by: the short
+/// name or the group prefix, and not at all for hostname/user/comment.
 pub fn highlight_indices(query: &str, item: &SshGroupItem) -> Vec<usize> {
     // For grouped hosts the displayed name is `group/short-name`; match the
     // group prefix and the short name separately so the highlighted characters
@@ -238,21 +305,13 @@ pub fn highlight_indices(query: &str, item: &SshGroupItem) -> Vec<usize> {
 
     let mut indices = Vec::new();
 
-    for token in query.split_whitespace() {
-        let name_match = best_match(token, &item.name);
-
-        match item_score(token, item) {
-            Some(best) if name_match.as_ref().map(|m| m.score()) == Some(best) => {
-                if let Some(name_match) = name_match {
-                    indices.extend(name_match.matched_indices().map(|idx| idx + offset));
-                }
+    for token in lowercase_tokens(query) {
+        match best_field(&token, item, group) {
+            Some((Field::Name, found)) => {
+                indices.extend(found.indices.iter().map(|idx| idx + offset))
             }
-            Some(_) => {}
-            None => {
-                if let Some(group_match) = group.and_then(|group| best_match(token, group)) {
-                    indices.extend(group_match.matched_indices().copied());
-                }
-            }
+            Some((Field::Group, found)) => indices.extend(found.indices),
+            _ => {}
         }
     }
 
@@ -338,12 +397,59 @@ mod tests {
         assert_eq!(searcher.search_string(), "");
     }
 
+    fn tier(token: &str, value: &str) -> Option<Tier> {
+        let token: Vec<char> = token.chars().map(lowercase_char).collect();
+        match_field(&token, value).map(|found| found.tier)
+    }
+
     #[test]
-    fn test_item_score_ranks_tight_match_higher() {
-        let tight = item_score("prod", &make_item("prod-web-01", 0)).unwrap();
-        let scattered = item_score("prod", &make_item("deploy-runner-old", 0)).unwrap();
-        assert!(tight > scattered);
-        assert!(item_score("prod", &make_item("staging-db", 0)).is_none());
+    fn test_match_field_tiers() {
+        assert_eq!(tier("db", "DB"), Some(Tier::Exact));
+        assert_eq!(tier("db", "db-01"), Some(Tier::Prefix));
+        assert_eq!(tier("web", "api-web-01"), Some(Tier::WordStart));
+        assert_eq!(tier("eb", "web"), Some(Tier::Substring));
+        assert_eq!(tier("db", "web-dev-backup"), Some(Tier::Fuzzy));
+        assert_eq!(tier("prod", "staging-db"), None);
+        assert_eq!(tier("toolong", "short"), None);
+    }
+
+    #[test]
+    fn test_match_field_contiguous_indices() {
+        let token: Vec<char> = "web".chars().collect();
+        let found = match_field(&token, "my-web").unwrap();
+        assert_eq!(found.indices, vec![3, 4, 5]);
+    }
+
+    #[test]
+    fn test_rank_matches_tiers_beat_fuzzy_score() {
+        // sublime_fuzzy scores the scattered match higher than the exact one
+        let groups = vec![make_group(
+            "Hosts",
+            vec![
+                make_item("web-dev-backup", 0),
+                make_item("api-db", 0),
+                make_item("db-01", 0),
+                make_item("db", 0),
+            ],
+        )];
+        assert_eq!(
+            rank_matches("db", &groups, 0),
+            vec![(0, 3), (0, 2), (0, 1), (0, 0)]
+        );
+
+        // Frecency only breaks ties inside a tier
+        let now = 1_000_000_000;
+        let groups = vec![make_group(
+            "Hosts",
+            vec![
+                SshGroupItem {
+                    last_used: now - 60,
+                    ..make_item("w-e-b-x", 50)
+                },
+                make_item("web", 0),
+            ],
+        )];
+        assert_eq!(rank_matches("web", &groups, now), vec![(0, 1), (0, 0)]);
     }
 
     #[test]
@@ -361,14 +467,14 @@ mod tests {
     #[test]
     fn test_rank_matches_orders_by_score_then_connections() {
         let groups = vec![make_group(
-            "Prod",
+            "Hosts",
             vec![
                 make_item("deploy-runner-old", 100),
                 make_item("prod-web-01", 0),
             ],
         )];
 
-        // "prod" matches prod-web-01 tightly; deploy-runner-old only matches loosely
+        // "prod" is a prefix of prod-web-01; deploy-runner-old only matches fuzzily
         assert_eq!(rank_matches("prod", &groups, 0), vec![(0, 1), (0, 0)]);
 
         // Equal scores fall back to connection count, highest first
@@ -390,7 +496,7 @@ mod tests {
     }
 
     #[test]
-    fn test_rank_matches_group_prefix_priority() {
+    fn test_rank_matches_exact_group_name_first() {
         let now = 1_800_000_000;
         let groups = vec![
             make_group(
@@ -403,11 +509,15 @@ mod tests {
             ),
         ];
 
-        // Typing the group name (or a prefix of it) surfaces that group first,
-        // even though the `llm-*` names score higher on their own.
+        // Typing the group name exactly surfaces that group first, even though
+        // the `llm-*` names score higher on their own.
         let expected = vec![(0, 0), (0, 1), (1, 0), (1, 1)];
         assert_eq!(rank_matches("llm", &groups, now), expected);
-        assert_eq!(rank_matches("LL", &groups, now), expected);
+
+        // A group-name prefix ranks like any other prefix match
+        let mut prefix = rank_matches("LL", &groups, now);
+        prefix.sort();
+        assert_eq!(prefix, expected);
 
         // A more specific token is not a group match, so only the name matches
         assert_eq!(rank_matches("llm-service", &groups, now), vec![(1, 0)]);
@@ -481,10 +591,11 @@ mod tests {
     #[test]
     fn test_highlight_indices_skips_tokens_ranked_by_other_fields() {
         let mut item = make_item("db-01", 0);
-        item.host_config.insert("HostName", "postgres.internal");
+        item.host_config.insert("HostName", "db01.lan");
 
-        // "postgres" scores best on the hostname, so the name stays plain
-        assert!(highlight_indices("postgres", &item).is_empty());
+        // "db01" only fuzzy-matches the name but is a hostname prefix, so the
+        // name stays plain
+        assert!(highlight_indices("db01", &item).is_empty());
         assert_eq!(highlight_indices("db", &item), vec![0, 1]);
     }
 
