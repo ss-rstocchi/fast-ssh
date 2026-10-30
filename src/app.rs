@@ -47,6 +47,9 @@ pub struct App {
     /// Recomputed only when the query changes, so rendering never re-runs the
     /// fuzzy search.
     search_matches: Vec<(usize, usize)>,
+    /// Group and host selected before entering search, restored when search
+    /// exits without a selected result.
+    search_origin: (usize, Option<usize>),
     /// Rendered spans for the global config view, built once per session.
     pub global_config_spans: OnceCell<Vec<Spans<'static>>>,
 }
@@ -56,7 +59,11 @@ impl App {
         let db = App::create_or_get_db_file()?;
         let scs = SshConfigStore::new(&db)?;
 
-        Ok(App {
+        Ok(App::from_parts(db, scs))
+    }
+
+    fn from_parts(db: FileDatabase, scs: SshConfigStore) -> App {
+        App {
             state: AppState::Normal,
             selected_group: 0,
             config_paragraph_offset: 0,
@@ -74,8 +81,9 @@ impl App {
             show_help: false,
             pending_g: false,
             search_matches: Vec::new(),
+            search_origin: (0, None),
             global_config_spans: OnceCell::new(),
-        })
+        }
     }
 
     pub fn create_or_get_db_file() -> Result<FileDatabase> {
@@ -158,6 +166,7 @@ impl App {
     }
 
     pub fn enter_search_mode(&mut self) {
+        self.search_origin = (self.selected_group, self.host_state.selected());
         self.state = AppState::Searching;
         self.recompute_search_matches();
         self.host_state.select(Some(0));
@@ -165,12 +174,28 @@ impl App {
         self.reset_config_scroll();
     }
 
+    /// Leaves search with the selected result selected in its own group, so
+    /// normal-mode actions apply to it; without one, restores the selection
+    /// from before the search.
     pub fn exit_search_mode(&mut self) {
+        let selected_match = self
+            .host_state
+            .selected()
+            .and_then(|index| self.search_matches.get(index).copied());
+        let (group_idx, item_idx) = match selected_match {
+            Some((group_idx, item_idx)) => (group_idx, Some(item_idx)),
+            None => self.search_origin,
+        };
+
         self.searcher.clear_search();
         self.state = AppState::Normal;
         self.search_matches.clear();
         self.pending_g = false;
+        self.selected_group = group_idx;
+        self.host_state.select(item_idx);
+        // The hosts table scrolls the selection into view on the next draw
         self.hosts_offset = 0;
+        self.reset_config_scroll();
     }
 
     pub fn search_add_char(&mut self, c: char) {
@@ -330,5 +355,82 @@ impl App {
 
         self.host_state.select(Some(new_pos));
         self.reset_config_scroll();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn item(name: &str) -> SshGroupItem {
+        SshGroupItem {
+            name: name.to_string(),
+            full_name: name.to_string(),
+            connection_count: 0,
+            last_used: 0,
+            host_config: Default::default(),
+            comment: None,
+        }
+    }
+
+    fn test_app(groups: Vec<SshGroup>) -> App {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join("fast_ssh_tests");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!(
+            "app_db_{}_{}.ron",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let db = FileDatabase::new(&path).unwrap();
+        let _ = fs::remove_file(&path);
+        App::from_parts(db, SshConfigStore { groups })
+    }
+
+    fn groups() -> Vec<SshGroup> {
+        vec![
+            SshGroup {
+                name: "Dev".to_string(),
+                items: vec![item("dev-a"), item("dev-b")],
+            },
+            SshGroup {
+                name: "Prod".to_string(),
+                items: vec![item("db"), item("web")],
+            },
+        ]
+    }
+
+    #[test]
+    fn test_exit_search_selects_result_in_its_group() {
+        let mut app = test_app(groups());
+        app.host_state.select(Some(1));
+
+        app.enter_search_mode();
+        for c in "web".chars() {
+            app.search_add_char(c);
+        }
+        app.exit_search_mode();
+
+        assert_eq!(app.selected_group, 1);
+        assert_eq!(app.host_state.selected(), Some(1));
+        assert_eq!(app.get_selected_item().unwrap().name, "web");
+    }
+
+    #[test]
+    fn test_exit_search_without_result_restores_selection() {
+        let mut app = test_app(groups());
+        app.selected_group = 1;
+        app.host_state.select(Some(1));
+
+        app.enter_search_mode();
+        for c in "zzz".chars() {
+            app.search_add_char(c);
+        }
+        assert_eq!(app.search_result_count(), 0);
+        app.exit_search_mode();
+
+        assert_eq!(app.selected_group, 1);
+        assert_eq!(app.get_selected_item().unwrap().name, "web");
     }
 }
