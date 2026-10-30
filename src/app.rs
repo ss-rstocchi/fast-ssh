@@ -88,11 +88,7 @@ impl App {
         fs::create_dir_all(&conf_path)
             .with_context(|| format_err!("Could not create the config directory"))?;
 
-        let db_path_str = db_path
-            .to_str()
-            .ok_or_else(|| format_err!("Database path contains invalid UTF-8"))?;
-
-        FileDatabase::new(db_path_str)
+        FileDatabase::new(&db_path)
     }
 
     #[inline]

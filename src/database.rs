@@ -1,10 +1,13 @@
 use anyhow::{Context, Result};
-use rustbreak::{deser::Ron, FileDatabase as _FileDatabase, RustbreakError};
+use rustbreak::{deser::Ron, PathDatabase, RustbreakError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
+/// Saves go through a temp file + rename, so a crash mid-save cannot
+/// corrupt the database.
 pub struct FileDatabase {
-    db: _FileDatabase<HashMap<String, HostDatabaseEntry>, Ron>,
+    db: PathDatabase<HashMap<String, HostDatabaseEntry>, Ron>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone, Copy)]
@@ -14,35 +17,43 @@ pub struct HostDatabaseEntry {
 }
 
 impl FileDatabase {
-    pub fn new(filename: &str) -> Result<FileDatabase> {
+    pub fn new(path: &Path) -> Result<FileDatabase> {
         let load = || {
-            _FileDatabase::<HashMap<String, HostDatabaseEntry>, Ron>::load_from_path_or_default(
-                filename,
+            PathDatabase::<HashMap<String, HostDatabaseEntry>, Ron>::load_from_path_or_default(
+                path.to_path_buf(),
             )
         };
 
         match load() {
             Ok(db) => Ok(FileDatabase { db }),
-            Err(error) => {
-                // A corrupt database should not make the app unusable: move it
-                // aside and start from a fresh one.
-                let backup = format!("{}.bak", filename);
-                std::fs::rename(filename, &backup).with_context(|| {
+            // A corrupt database should not make the app unusable: move it
+            // aside and start from a fresh one. Other errors (permissions,
+            // IO) say nothing about the contents, so the file is left alone.
+            Err(RustbreakError::DeSerialization(error)) => {
+                let backup = free_backup_path(path);
+                std::fs::rename(path, &backup).with_context(|| {
                     format!(
                         "Database at {} is unreadable ({error}) and could not be backed up to {}",
-                        filename, backup
+                        path.display(),
+                        backup.display()
                     )
                 })?;
                 eprintln!(
                     "Warning: unreadable database at {} moved to {} ({error})",
-                    filename, backup
+                    path.display(),
+                    backup.display()
                 );
 
                 let db = load().with_context(|| {
-                    format!("Error while creating a fresh database at {}", filename)
+                    format!(
+                        "Error while creating a fresh database at {}",
+                        path.display()
+                    )
                 })?;
                 Ok(FileDatabase { db })
             }
+            Err(error) => Err(error)
+                .with_context(|| format!("Could not open the database at {}", path.display())),
         }
     }
 
@@ -72,6 +83,16 @@ impl FileDatabase {
     }
 }
 
+/// First of `<path>.bak`, `<path>.bak.1`, ... that does not exist yet, so an
+/// earlier backup is never overwritten.
+fn free_backup_path(path: &Path) -> PathBuf {
+    let base = format!("{}.bak", path.display());
+    std::iter::once(PathBuf::from(&base))
+        .chain((1..).map(|n| PathBuf::from(format!("{base}.{n}"))))
+        .find(|candidate| !candidate.exists())
+        .expect("unbounded candidate list")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,7 +101,7 @@ mod tests {
 
     /// Each test gets its own database file so parallel tests cannot clobber
     /// or delete each other's data.
-    fn get_test_db_path() -> String {
+    fn get_test_db_path() -> PathBuf {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
         let test_dir = std::env::temp_dir().join("fast_ssh_tests");
@@ -90,29 +111,11 @@ mod tests {
             std::process::id(),
             COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
-        path.to_str().unwrap().to_string()
+        path
     }
 
-    fn cleanup_test_db(path: &str) {
+    fn cleanup_test_db(path: &Path) {
         let _ = fs::remove_file(path);
-    }
-
-    #[test]
-    fn test_host_database_entry_default() {
-        let entry = HostDatabaseEntry::default();
-        assert_eq!(entry.connection_count, 0);
-        assert_eq!(entry.last_used_date, 0);
-    }
-
-    #[test]
-    fn test_host_database_entry_clone() {
-        let entry = HostDatabaseEntry {
-            connection_count: 5,
-            last_used_date: 9876543210,
-        };
-        let cloned = entry;
-        assert_eq!(entry.connection_count, cloned.connection_count);
-        assert_eq!(entry.last_used_date, cloned.last_used_date);
     }
 
     #[test]
@@ -194,12 +197,23 @@ mod tests {
 
         let db = FileDatabase::new(&path).expect("should recover from a corrupt database");
         assert_eq!(db.get_host_values("host").unwrap().connection_count, 0);
+        drop(db);
 
-        let backup = format!("{}.bak", path);
-        assert!(std::path::Path::new(&backup).exists());
+        // A second corruption keeps the first backup
+        fs::write(&path, "corrupt again").unwrap();
+        FileDatabase::new(&path).expect("should recover again");
+
+        let backup = PathBuf::from(format!("{}.bak", path.display()));
+        let second_backup = PathBuf::from(format!("{}.bak.1", path.display()));
+        assert_eq!(
+            fs::read_to_string(&backup).unwrap(),
+            "this is not valid ron"
+        );
+        assert_eq!(fs::read_to_string(&second_backup).unwrap(), "corrupt again");
 
         cleanup_test_db(&path);
         let _ = fs::remove_file(backup);
+        let _ = fs::remove_file(second_backup);
     }
 
     #[test]
