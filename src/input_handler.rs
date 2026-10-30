@@ -1,8 +1,9 @@
+use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 
 use crate::app::{App, AppState};
 
-pub fn handle_inputs(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+pub fn handle_inputs(app: &mut App) -> Result<()> {
     match event::read()? {
         // On Windows crossterm reports key releases as well; processing them
         // would apply every keystroke twice.

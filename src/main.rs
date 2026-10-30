@@ -1,3 +1,4 @@
+use anyhow::Result;
 use layout::create_layout;
 use std::process::Command;
 use std::sync::OnceLock;
@@ -40,7 +41,7 @@ pub fn get_theme() -> &'static Theme {
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     std::panic::set_hook(Box::new(|info| {
         let _ = crossterm::terminal::disable_raw_mode();
         let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen);

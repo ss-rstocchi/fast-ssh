@@ -1,3 +1,4 @@
+use anyhow::Result;
 use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -7,7 +8,7 @@ use tui::{backend::CrosstermBackend, Terminal};
 
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 
-pub fn init_terminal() -> Result<Tui, Box<dyn std::error::Error>> {
+pub fn init_terminal() -> Result<Tui> {
     enable_raw_mode()?;
 
     let mut stdout = std::io::stdout();
@@ -26,7 +27,7 @@ pub fn init_terminal() -> Result<Tui, Box<dyn std::error::Error>> {
     }
 }
 
-pub fn restore_terminal(terminal: &mut Tui) -> Result<(), Box<dyn std::error::Error>> {
+pub fn restore_terminal(terminal: &mut Tui) -> Result<()> {
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
@@ -40,7 +41,7 @@ pub struct TerminalGuard {
 }
 
 impl TerminalGuard {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new() -> Result<Self> {
         Ok(Self {
             terminal: Some(init_terminal()?),
         })
@@ -50,7 +51,7 @@ impl TerminalGuard {
         self.terminal.as_mut().expect("terminal already restored")
     }
 
-    pub fn restore(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn restore(&mut self) -> Result<()> {
         if let Some(mut terminal) = self.terminal.take() {
             restore_terminal(&mut terminal)?;
         }
