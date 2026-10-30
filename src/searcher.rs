@@ -120,6 +120,7 @@ pub fn rank_matches(query: &str, groups: &[SshGroup], now: i64) -> Vec<(usize, u
             .collect();
     }
 
+    let lowercase_tokens: Vec<String> = tokens.iter().map(|t| t.to_lowercase()).collect();
     let mut scored: Vec<(u8, isize, i64, (usize, usize))> = Vec::new();
 
     for (group_idx, group) in groups.iter().enumerate() {
@@ -130,7 +131,8 @@ pub fn rank_matches(query: &str, groups: &[SshGroup], now: i64) -> Vec<(usize, u
         let group_name = (group.name != OTHERS_GROUP).then_some(group.name.as_str());
 
         // 0 = the group name matches the query, 1 = it does not
-        let priority = u8::from(!group_name.is_some_and(|name| group_matches(&tokens, name)));
+        let priority =
+            u8::from(!group_name.is_some_and(|name| group_matches(&lowercase_tokens, name)));
 
         for (item_idx, item) in group.items.iter().enumerate() {
             let Some(fuzzy_score) = match_tokens(&tokens, item, group_name) else {
@@ -153,12 +155,13 @@ pub fn rank_matches(query: &str, groups: &[SshGroup], now: i64) -> Vec<(usize, u
     scored.into_iter().map(|(_, _, _, idx)| idx).collect()
 }
 
-/// Whether any query token is a case-insensitive prefix of the group name.
-fn group_matches(tokens: &[&str], group_name: &str) -> bool {
+/// Whether any (lowercased) query token is a case-insensitive prefix of the
+/// group name.
+fn group_matches(lowercase_tokens: &[String], group_name: &str) -> bool {
     let group_name = group_name.to_lowercase();
-    tokens
+    lowercase_tokens
         .iter()
-        .any(|token| group_name.starts_with(&token.to_lowercase()))
+        .any(|token| group_name.starts_with(token.as_str()))
 }
 
 /// Sums the best score of every token; `None` if any token matches nothing.
