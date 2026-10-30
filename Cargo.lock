@@ -172,6 +172,7 @@ dependencies = [
  "serde_yaml",
  "sublime_fuzzy",
  "tui",
+ "unicode-width",
 ]
 
 [[package]]
