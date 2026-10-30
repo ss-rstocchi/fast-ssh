@@ -222,8 +222,11 @@ fn frecency_bonus(item: &SshGroupItem, now: i64) -> isize {
     bonus
 }
 
-/// Char indices in `target` matched by any whitespace-separated token of
-/// `query`, sorted and deduplicated. Used to highlight search results.
+/// Char indices in the item's `full_name` matched by the whitespace-separated
+/// tokens of `query`, sorted and deduplicated. Used to highlight search
+/// results. A token is highlighted only where it scored during ranking: in
+/// the short name when that was its best field, in the group prefix when no
+/// item field matched, and not at all when it matched hostname/user/comment.
 pub fn highlight_indices(query: &str, item: &SshGroupItem) -> Vec<usize> {
     // For grouped hosts the displayed name is `group/short-name`; match the
     // group prefix and the short name separately so the highlighted characters
@@ -236,19 +239,20 @@ pub fn highlight_indices(query: &str, item: &SshGroupItem) -> Vec<usize> {
     let mut indices = Vec::new();
 
     for token in query.split_whitespace() {
-        if let Some(group) = group {
-            if let Some(group_match) = best_match(token, group) {
-                indices.extend(group_match.matched_indices().copied());
-            }
-        }
+        let name_match = best_match(token, &item.name);
 
-        if let Some(name_match) = best_match(token, &item.name) {
-            indices.extend(
-                name_match
-                    .matched_indices()
-                    .copied()
-                    .map(|idx| idx + offset),
-            );
+        match item_score(token, item) {
+            Some(best) if name_match.as_ref().map(|m| m.score()) == Some(best) => {
+                if let Some(name_match) = name_match {
+                    indices.extend(name_match.matched_indices().map(|idx| idx + offset));
+                }
+            }
+            Some(_) => {}
+            None => {
+                if let Some(group_match) = group.and_then(|group| best_match(token, group)) {
+                    indices.extend(group_match.matched_indices().copied());
+                }
+            }
         }
     }
 
@@ -472,6 +476,16 @@ mod tests {
 
         // "prod" matches the group prefix, "db" the short name
         assert_eq!(highlight_indices("prod db", &item), vec![0, 1, 2, 3, 5, 6]);
+    }
+
+    #[test]
+    fn test_highlight_indices_skips_tokens_ranked_by_other_fields() {
+        let mut item = make_item("db-01", 0);
+        item.host_config.insert("HostName", "postgres.internal");
+
+        // "postgres" scores best on the hostname, so the name stays plain
+        assert!(highlight_indices("postgres", &item).is_empty());
+        assert_eq!(highlight_indices("db", &item), vec![0, 1]);
     }
 
     #[test]
