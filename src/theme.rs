@@ -37,6 +37,39 @@ def_theme_struct_with_defaults!(
     border_color => Color::Rgb(185, 103, 255)
 );
 
+const BLACK: Color = Color::Rgb(0, 0, 0);
+const WHITE: Color = Color::Rgb(255, 255, 255);
+
+/// Black or white, whichever contrasts more with `background`, for text
+/// drawn on a theme color. RGB rather than palette colors, which terminal
+/// themes remap. Non-RGB colors get black, as the theme defaults and hex
+/// colors are all RGB.
+pub fn contrasting_text(background: Color) -> Color {
+    let Color::Rgb(r, g, b) = background else {
+        return BLACK;
+    };
+
+    // WCAG relative luminance
+    let channel = |c: u8| {
+        let c = f64::from(c) / 255.0;
+        if c <= 0.03928 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let luminance = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+
+    // Contrast ratios against white (luminance 1) and black (0)
+    let on_white = 1.05 / (luminance + 0.05);
+    let on_black = (luminance + 0.05) / 0.05;
+    if on_black >= on_white {
+        BLACK
+    } else {
+        WHITE
+    }
+}
+
 fn hex_to_color(hex: &str) -> Option<Color> {
     // Validate format: must be exactly 7 chars and start with #
     if hex.len() != 7 || !hex.starts_with('#') {
@@ -180,5 +213,15 @@ mod tests {
         assert_eq!(theme.text_primary(), Color::Rgb(255, 0, 0));
         assert_eq!(theme.text_secondary(), Color::White);
         assert_eq!(theme.border_color(), Color::Rgb(185, 103, 255));
+    }
+
+    #[test]
+    fn test_contrasting_text() {
+        // The default purple reads better in black (6.2:1) than white (3.4:1)
+        assert_eq!(contrasting_text(Color::Rgb(185, 103, 255)), BLACK);
+        assert_eq!(contrasting_text(Color::Rgb(255, 255, 255)), BLACK);
+        assert_eq!(contrasting_text(Color::Rgb(0, 0, 0)), WHITE);
+        assert_eq!(contrasting_text(Color::Rgb(40, 40, 160)), WHITE);
+        assert_eq!(contrasting_text(Color::White), BLACK);
     }
 }

@@ -1,5 +1,5 @@
 use super::block;
-use crate::{get_theme, App};
+use crate::{get_theme, theme::contrasting_text, App};
 use std::io::Stdout;
 use std::ops::Range;
 use tui::layout::Rect;
@@ -35,6 +35,7 @@ impl GroupsWidget {
         let plain = Style::default().fg(theme.text_secondary());
         let selected = Style::default()
             .add_modifier(Modifier::BOLD)
+            .fg(contrasting_text(theme.text_primary()))
             .bg(theme.text_primary());
 
         let mut spans = Vec::new();
