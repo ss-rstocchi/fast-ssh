@@ -43,6 +43,9 @@ pub struct App {
     pub db: FileDatabase,
     pub show_help: bool,
     pub pending_g: bool,
+    /// In search, `true` once Esc moved focus from the query to the results,
+    /// where vim keys navigate instead of typing
+    pub search_browsing: bool,
 
     /// `(group index, item index)` pairs of the current search results.
     /// Recomputed only when the query changes, so rendering never re-runs the
@@ -81,6 +84,7 @@ impl App {
             searcher: Searcher::new(),
             show_help: false,
             pending_g: false,
+            search_browsing: false,
             search_matches: Vec::new(),
             search_origin: (0, None),
             global_config_spans: OnceCell::new(),
@@ -169,6 +173,7 @@ impl App {
     pub fn enter_search_mode(&mut self) {
         self.search_origin = (self.selected_group, self.host_state.selected());
         self.state = AppState::Searching;
+        self.search_browsing = false;
         self.recompute_search_matches();
         self.host_state.select(Some(0));
         self.hosts_offset = 0;
@@ -191,6 +196,7 @@ impl App {
         self.searcher.clear_search();
         self.state = AppState::Normal;
         self.search_matches.clear();
+        self.search_browsing = false;
         self.pending_g = false;
         self.selected_group = group_idx;
         self.host_state.select(item_idx);
@@ -372,7 +378,7 @@ impl App {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -387,7 +393,7 @@ mod tests {
         }
     }
 
-    fn test_app(groups: Vec<SshGroup>) -> App {
+    pub(crate) fn test_app(groups: Vec<SshGroup>) -> App {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
         let dir = std::env::temp_dir().join("fast_ssh_tests");
         fs::create_dir_all(&dir).unwrap();
@@ -401,7 +407,7 @@ mod tests {
         App::from_parts(db, SshConfigStore { groups })
     }
 
-    fn groups() -> Vec<SshGroup> {
+    pub(crate) fn groups() -> Vec<SshGroup> {
         vec![
             SshGroup {
                 name: "Dev".to_string(),

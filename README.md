@@ -73,7 +73,7 @@ This database is used to store the number of connections to a service and the da
 
 ## Search Mode
 
-Fast-SSH implements a search mode ( fuzzy ) that allows you to type to find one of your hosts. To use it, press `s` or `/`, start typing, and results are ranked with the best match pre-selected. Press enter to connect to it, or move the selection with the arrow keys (or Ctrl+j/k, Ctrl+n/p) first. Press ESC to leave the search mode and return to the "groups" mode with the highlighted host selected in its group, so other shortcuts (copy key, sftp) apply to it.
+Fast-SSH implements a search mode ( fuzzy ) that allows you to type to find one of your hosts. To use it, press `s` or `/`, start typing, and results are ranked with the best match pre-selected. Press enter to connect to it, or move the selection with the arrow keys (or Ctrl+j/k, Ctrl+n/p) first. Press ESC to move focus from the query to the results, where vim keys work (`j`/`k`, `gg`/`G`, Ctrl+d/u) and `i`, `a` or `/` go back to editing the query. Press ESC again to leave the search mode and return to the "groups" mode with the highlighted host selected in its group, so other shortcuts (copy key, sftp) apply to it.
 
 The query is split into space-separated tokens and every token must match, so `prod db` finds `Prod/db-01` even when `prod` only appears in the group name. Each token is ranked by how it matched: an exact match beats a prefix, which beats a match at the start of a word (`web` in `api-web-01`), which beats any other substring, which beats a scattered fuzzy match. So `db` lists `db` before `db-01` before `web-dev-backup`, and typing a group name exactly puts that group's hosts first. Within the same tier, hosts are ranked by fuzzy score plus how often and how recently you connected, so hosts you use daily float to the top. With an empty query every host is listed with the most used ones first, so `/` then Enter reconnects to your usual host. Matched characters are highlighted, a match on the hostname, user or comment is shown dimmed next to the host name (`db-01 · 10.0.1.5`), and the search bar shows how many hosts match.
 
@@ -106,7 +106,8 @@ Recent connections are automatically excluded from search results.
 | Page Up/Down            | Scroll Configuration                  |
 | s or /                  | Enable Search Mode                    |
 | Enter (in search)       | Connect to highlighted host           |
-| Esc                     | Exit Search Mode                      |
+| Esc (in search)         | Focus results; again to exit search   |
+| i, a or / (on results)  | Edit query again                      |
 | Up/Down, Ctrl+j/k, Ctrl+n/p | Navigate matches                  |
 | Ctrl+w or Alt+Backspace (in search) | Delete last word of query |
 | Ctrl+u (in search)      | Clear query                           |

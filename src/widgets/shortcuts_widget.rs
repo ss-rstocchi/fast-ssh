@@ -45,7 +45,9 @@ impl ShortcutsWidget {
             Spans::from("'Up/Down Arrow, Ctrl+j/k or Ctrl+n/p': Navigate Matches"),
             Spans::from("'Ctrl+w or Alt+Backspace': Delete Last Word"),
             Spans::from("'Ctrl+u': Clear Query"),
-            Spans::from("'Esc': Exit Search Mode"),
+            Spans::from("'Esc': Focus Results (j/k, gg/G, Ctrl+d/u)"),
+            Spans::from("'i', 'a' or '/' (on results): Edit Query"),
+            Spans::from("'Esc' (on results): Exit Search Mode"),
         ];
 
         let paragraph = Paragraph::new(text)

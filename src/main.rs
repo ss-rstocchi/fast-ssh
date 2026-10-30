@@ -169,10 +169,12 @@ fn draw(terminal: &mut TerminalGuard, app: &mut App) -> Result<()> {
 
         match app.state {
             AppState::Normal => GroupsWidget::render(app, layout.groups_area, frame),
-            AppState::Searching => {
-                app.searcher
-                    .render(layout.groups_area, frame, app.search_result_count())
-            }
+            AppState::Searching => app.searcher.render(
+                layout.groups_area,
+                frame,
+                app.search_result_count(),
+                app.search_browsing,
+            ),
         };
 
         if let Some(help_area) = layout.help_area {

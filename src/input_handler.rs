@@ -21,6 +21,9 @@ pub fn handle_inputs(app: &mut App) -> Result<bool> {
         Event::Key(key) => {
             match app.state {
                 AppState::Normal => handle_input_normal_mode(app, key.code, key.modifiers),
+                AppState::Searching if app.search_browsing => {
+                    handle_input_search_results(app, key.code, key.modifiers)
+                }
                 AppState::Searching => handle_input_search_mode(app, key.code, key.modifiers),
             }
             true
@@ -98,10 +101,11 @@ fn handle_normal_mode_navigation(app: &mut App, key: KeyCode, modifiers: KeyModi
 }
 
 /// Handle input in search mode: typing filters live, arrows move the
-/// selection, Enter connects to the highlighted (top-ranked) result
+/// selection, Enter connects to the highlighted (top-ranked) result and Esc
+/// moves focus to the results for vim navigation
 fn handle_input_search_mode(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
     match key {
-        KeyCode::Esc => app.exit_search_mode(),
+        KeyCode::Esc => app.search_browsing = true,
         KeyCode::Enter => {
             if app.get_selected_item().is_some() {
                 app.should_spawn_ssh = true;
@@ -125,6 +129,36 @@ fn handle_input_search_mode(app: &mut App, key: KeyCode, modifiers: KeyModifiers
         }
         KeyCode::Backspace => app.search_del_char(),
         _ => {}
+    }
+}
+
+/// Handle input on the search results, after Esc left the query: vim keys
+/// move the selection, `i`, `a` or `/` edit the query again and Esc leaves
+/// search with the selected host selected in its group
+fn handle_input_search_results(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
+    if key != KeyCode::Char('g') {
+        app.pending_g = false;
+    }
+
+    match key {
+        KeyCode::Esc => app.exit_search_mode(),
+        KeyCode::Char('i' | 'a' | '/') if modifiers.is_empty() => app.search_browsing = false,
+        KeyCode::Char('q') => app.should_quit = true,
+        KeyCode::Enter => {
+            if app.get_selected_item().is_some() {
+                app.should_spawn_ssh = true;
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => app.change_selected_item(true),
+        KeyCode::Up | KeyCode::Char('k') => app.change_selected_item(false),
+        // Ctrl+j/k reach the arms above, as modifiers are not checked there
+        KeyCode::Char('n') if modifiers.contains(KeyModifiers::CONTROL) => {
+            app.change_selected_item(true)
+        }
+        KeyCode::Char('p') if modifiers.contains(KeyModifiers::CONTROL) => {
+            app.change_selected_item(false)
+        }
+        _ => handle_vim_navigation(app, key, modifiers),
     }
 }
 
@@ -152,5 +186,84 @@ fn handle_vim_navigation(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
             app.scroll_half_page(false);
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::tests::{groups, test_app};
+
+    fn press(app: &mut App, keys: &str) {
+        for c in keys.chars() {
+            let key = KeyCode::Char(c);
+            match app.state {
+                AppState::Normal => handle_input_normal_mode(app, key, KeyModifiers::NONE),
+                AppState::Searching if app.search_browsing => {
+                    handle_input_search_results(app, key, KeyModifiers::NONE)
+                }
+                AppState::Searching => handle_input_search_mode(app, key, KeyModifiers::NONE),
+            }
+        }
+    }
+
+    fn esc(app: &mut App) {
+        match app.search_browsing {
+            true => handle_input_search_results(app, KeyCode::Esc, KeyModifiers::NONE),
+            false => handle_input_search_mode(app, KeyCode::Esc, KeyModifiers::NONE),
+        }
+    }
+
+    #[test]
+    fn test_search_vim_keys_after_esc() {
+        let mut app = test_app(groups());
+        press(&mut app, "/");
+        // j and k are typed into the query
+        press(&mut app, "jk");
+        assert_eq!(app.searcher.search_string(), "jk");
+        handle_input_search_mode(&mut app, KeyCode::Char('u'), KeyModifiers::CONTROL);
+
+        // Esc focuses the results: j/k/G/gg navigate, the query is unchanged
+        press(&mut app, "d");
+        esc(&mut app);
+        assert!(app.search_browsing);
+        assert_eq!(app.search_result_count(), 4);
+        press(&mut app, "jj");
+        assert_eq!(app.host_state.selected(), Some(2));
+        press(&mut app, "k");
+        assert_eq!(app.host_state.selected(), Some(1));
+        press(&mut app, "G");
+        assert_eq!(app.host_state.selected(), Some(3));
+        press(&mut app, "gg");
+        assert_eq!(app.host_state.selected(), Some(0));
+        assert_eq!(app.searcher.search_string(), "d");
+
+        // i goes back to typing
+        press(&mut app, "ib");
+        assert!(!app.search_browsing);
+        assert_eq!(app.searcher.search_string(), "db");
+
+        // A second Esc leaves search with the host selected in its group
+        esc(&mut app);
+        esc(&mut app);
+        assert!(matches!(app.state, AppState::Normal));
+        assert!(!app.search_browsing);
+        assert_eq!(app.get_selected_item().unwrap().name, "db");
+    }
+
+    #[test]
+    fn test_entering_search_starts_typing() {
+        let mut app = test_app(groups());
+        press(&mut app, "/");
+        esc(&mut app);
+        press(&mut app, "q");
+        assert!(app.should_quit);
+
+        let mut app = test_app(groups());
+        press(&mut app, "/");
+        esc(&mut app);
+        esc(&mut app);
+        press(&mut app, "/");
+        assert!(!app.search_browsing);
     }
 }

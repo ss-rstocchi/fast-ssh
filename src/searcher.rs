@@ -68,11 +68,14 @@ impl Searcher {
         self.search_string.clear();
     }
 
+    /// `browsing` is `true` when focus is on the results instead of the
+    /// query.
     pub fn render(
         &self,
         area: Rect,
         frame: &mut Frame<CrosstermBackend<Stdout>>,
         result_count: usize,
+        browsing: bool,
     ) {
         let block = block::new(" Search ");
         let theme = get_theme();
@@ -86,8 +89,13 @@ impl Searcher {
                 &self.search_string,
                 Style::default().add_modifier(Modifier::BOLD),
             ),
-            Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
         ];
+        if !browsing {
+            spans.push(Span::styled(
+                "_",
+                Style::default().add_modifier(Modifier::SLOW_BLINK),
+            ));
+        }
 
         if !self.search_string.is_empty() {
             let noun = if result_count == 1 {
@@ -102,7 +110,11 @@ impl Searcher {
         }
 
         // Only show the key hint when it fits, rather than cutting it off
-        let hint = " [↑↓ navigate · Enter connect]";
+        let hint = if browsing {
+            " [j/k navigate · i edit · Esc exit]"
+        } else {
+            " [↑↓ navigate · Esc results]"
+        };
         let used: usize = spans.iter().map(|span| span.content.width()).sum();
         if used + hint.width() <= area.width.saturating_sub(2) as usize {
             spans.push(Span::styled(hint, hint_style));
