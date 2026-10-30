@@ -66,34 +66,13 @@ fn main() -> Result<()> {
 
     app.host_state.select(Some(0));
 
+    let mut needs_redraw = true;
     loop {
-        app.clamp_host_selection();
+        if needs_redraw {
+            draw(&mut terminal, &mut app)?;
+        }
 
-        let mut hosts_area_height: u16 = 0;
-        terminal.terminal().draw(|frame| {
-            let layout = create_layout(&app, frame);
-            hosts_area_height = layout.hosts_area.height;
-
-            match app.state {
-                AppState::Normal => GroupsWidget::render(&app, layout.groups_area, frame),
-                AppState::Searching => {
-                    app.searcher
-                        .render(layout.groups_area, frame, app.search_result_count())
-                }
-            };
-
-            HelpWidget::render(layout.help_area, frame);
-            HostsWidget::render(&mut app, layout.hosts_area, frame);
-            ConfigWidget::render(&app, layout.config_area, frame);
-            VersionWidget::render(layout.version_area, frame);
-
-            if let Some(shortcuts_area) = layout.shortcuts_area {
-                ShortcutsWidget::render(shortcuts_area, frame);
-            }
-        })?;
-        app.hosts_area_height = hosts_area_height;
-
-        handle_inputs(&mut app)?;
+        needs_redraw = handle_inputs(&mut app)?;
 
         if app.should_quit
             || app.should_spawn_ssh
@@ -180,4 +159,34 @@ fn run_command(mut command: Command) -> Result<()> {
 fn run_command(mut command: Command) -> Result<()> {
     let status = command.spawn()?.wait()?;
     std::process::exit(status.code().unwrap_or(1));
+}
+
+fn draw(terminal: &mut TerminalGuard, app: &mut App) -> Result<()> {
+    app.clamp_host_selection();
+
+    let mut hosts_area_height: u16 = 0;
+    terminal.terminal().draw(|frame| {
+        let layout = create_layout(app, frame);
+        hosts_area_height = layout.hosts_area.height;
+
+        match app.state {
+            AppState::Normal => GroupsWidget::render(app, layout.groups_area, frame),
+            AppState::Searching => {
+                app.searcher
+                    .render(layout.groups_area, frame, app.search_result_count())
+            }
+        };
+
+        HelpWidget::render(layout.help_area, frame);
+        HostsWidget::render(app, layout.hosts_area, frame);
+        ConfigWidget::render(app, layout.config_area, frame);
+        VersionWidget::render(layout.version_area, frame);
+
+        if let Some(shortcuts_area) = layout.shortcuts_area {
+            ShortcutsWidget::render(shortcuts_area, frame);
+        }
+    })?;
+    app.hosts_area_height = hosts_area_height;
+
+    Ok(())
 }

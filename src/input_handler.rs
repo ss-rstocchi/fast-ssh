@@ -3,26 +3,33 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 
 use crate::app::{App, AppState};
 
-pub fn handle_inputs(app: &mut App) -> Result<()> {
-    match event::read()? {
+/// Waits for the next terminal event and applies it. Returns whether the
+/// screen needs to be redrawn.
+pub fn handle_inputs(app: &mut App) -> Result<bool> {
+    let redraw = match event::read()? {
         // On Windows crossterm reports key releases as well; processing them
         // would apply every keystroke twice.
-        Event::Key(key) if key.kind == KeyEventKind::Release => {}
+        Event::Key(key) if key.kind == KeyEventKind::Release => false,
         // Raw mode swallows SIGINT, so Ctrl+C must be handled here or it's
         // dead in search mode and toggles the config pane in normal mode
         Event::Key(key)
             if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) =>
         {
             app.should_quit = true;
+            false
         }
-        Event::Key(key) => match app.state {
-            AppState::Normal => handle_input_normal_mode(app, key.code, key.modifiers),
-            AppState::Searching => handle_input_search_mode(app, key.code, key.modifiers),
-        },
-        Event::Resize(_, _) => {}
-        _ => {}
-    }
-    Ok(())
+        Event::Key(key) => {
+            match app.state {
+                AppState::Normal => handle_input_normal_mode(app, key.code, key.modifiers),
+                AppState::Searching => handle_input_search_mode(app, key.code, key.modifiers),
+            }
+            true
+        }
+        Event::Resize(_, _) => true,
+        // Mouse, focus and paste events change nothing
+        _ => false,
+    };
+    Ok(redraw)
 }
 
 /// Handle input in normal mode
