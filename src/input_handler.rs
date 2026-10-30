@@ -115,6 +115,11 @@ fn handle_input_search_mode(app: &mut App, key: KeyCode, modifiers: KeyModifiers
         KeyCode::Char('k' | 'p') if modifiers.contains(KeyModifiers::CONTROL) => {
             app.change_selected_item(false)
         }
+        KeyCode::Char('w') if modifiers.contains(KeyModifiers::CONTROL) => app.search_del_word(),
+        KeyCode::Backspace if modifiers.intersects(KeyModifiers::ALT | KeyModifiers::CONTROL) => {
+            app.search_del_word()
+        }
+        KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => app.search_clear(),
         KeyCode::Char(c) if !modifiers.intersects(KeyModifiers::ALT | KeyModifiers::CONTROL) => {
             app.search_add_char(c)
         }

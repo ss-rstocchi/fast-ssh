@@ -43,6 +43,8 @@ impl ShortcutsWidget {
             Spans::from("'s' or '/': Enable Search Mode"),
             Spans::from("'Enter': Connect to Highlighted Host"),
             Spans::from("'Up/Down Arrow, Ctrl+j/k or Ctrl+n/p': Navigate Matches"),
+            Spans::from("'Ctrl+w or Alt+Backspace': Delete Last Word"),
+            Spans::from("'Ctrl+u': Clear Query"),
             Spans::from("'Esc': Exit Search Mode"),
         ];
 

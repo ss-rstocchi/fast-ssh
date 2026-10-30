@@ -108,6 +108,8 @@ Recent connections are automatically excluded from search results.
 | Enter (in search)       | Connect to highlighted host           |
 | Esc                     | Exit Search Mode                      |
 | Up/Down, Ctrl+j/k, Ctrl+n/p | Navigate matches                  |
+| Ctrl+w or Alt+Backspace (in search) | Delete last word of query |
+| Ctrl+u (in search)      | Clear query                           |
 | K                       | Copy SSH key and exit                 |
 | C                       | Copy files and exit                   |
 

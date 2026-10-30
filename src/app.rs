@@ -200,14 +200,26 @@ impl App {
 
     pub fn search_add_char(&mut self, c: char) {
         self.searcher.add_char(c);
-        self.recompute_search_matches();
-        self.host_state.select(Some(0));
-        self.hosts_offset = 0;
-        self.reset_config_scroll();
+        self.on_query_changed();
     }
 
     pub fn search_del_char(&mut self) {
         self.searcher.del_char();
+        self.on_query_changed();
+    }
+
+    pub fn search_del_word(&mut self) {
+        self.searcher.del_word();
+        self.on_query_changed();
+    }
+
+    pub fn search_clear(&mut self) {
+        self.searcher.clear_search();
+        self.on_query_changed();
+    }
+
+    /// Re-ranks results and selects the new best match.
+    fn on_query_changed(&mut self) {
         self.recompute_search_matches();
         self.host_state.select(Some(0));
         self.hosts_offset = 0;

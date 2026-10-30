@@ -51,6 +51,18 @@ impl Searcher {
         self.search_string.pop();
     }
 
+    /// Deletes the last word and any whitespace after it, like Ctrl+W in a
+    /// shell.
+    pub fn del_word(&mut self) {
+        let trimmed = self.search_string.trim_end();
+        let word_start = trimmed
+            .char_indices()
+            .rev()
+            .find(|(_, c)| c.is_whitespace())
+            .map_or(0, |(idx, c)| idx + c.len_utf8());
+        self.search_string.truncate(word_start);
+    }
+
     pub fn clear_search(&mut self) {
         self.search_string.clear();
     }
@@ -635,6 +647,27 @@ mod tests {
     fn test_highlight_indices_unicode_char_positions() {
         let item = make_item("こんにちは", 0);
         assert_eq!(highlight_indices("ち", &item), vec![3]);
+    }
+
+    #[test]
+    fn test_del_word() {
+        let mut searcher = Searcher::new();
+        for c in "prod db-01  ".chars() {
+            searcher.add_char(c);
+        }
+
+        searcher.del_word();
+        assert_eq!(searcher.search_string(), "prod ");
+        searcher.del_word();
+        assert_eq!(searcher.search_string(), "");
+        searcher.del_word();
+        assert_eq!(searcher.search_string(), "");
+
+        for c in "web\u{3000}こんにちは".chars() {
+            searcher.add_char(c);
+        }
+        searcher.del_word();
+        assert_eq!(searcher.search_string(), "web\u{3000}");
     }
 
     #[test]
