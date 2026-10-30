@@ -13,6 +13,7 @@ use tui::{
     widgets::Paragraph,
     Frame,
 };
+use unicode_width::UnicodeWidthStr;
 
 /// Maximum connection count that still earns a frecency bonus.
 const FRECENCY_COUNT_CAP: i64 = 10;
@@ -100,7 +101,12 @@ impl Searcher {
             ));
         }
 
-        spans.push(Span::styled(" [↑↓ navigate · Enter connect]", hint_style));
+        // Only show the key hint when it fits, rather than cutting it off
+        let hint = " [↑↓ navigate · Enter connect]";
+        let used: usize = spans.iter().map(|span| span.content.width()).sum();
+        if used + hint.width() <= area.width.saturating_sub(2) as usize {
+            spans.push(Span::styled(hint, hint_style));
+        }
 
         let paragraph = Paragraph::new(Spans::from(spans)).block(block);
 
