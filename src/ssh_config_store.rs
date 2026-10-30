@@ -64,10 +64,13 @@ impl ConfigParser {
         }
     }
 
-    fn parse(&mut self, contents: &str, depth: usize) {
+    /// `enclosing` are the hosts of the block an `Include` appeared in;
+    /// options before the first `Host` line of an included file apply to
+    /// them, as in OpenSSH.
+    fn parse(&mut self, contents: &str, depth: usize, enclosing: &[usize]) {
         // Hosts the current block applies to; empty for global options and
         // `Match` blocks, whose options are ignored.
-        let mut current: Vec<usize> = Vec::new();
+        let mut current: Vec<usize> = enclosing.to_vec();
         // Full-line comments immediately preceding a `Host` line.
         let mut comment = String::new();
 
@@ -104,7 +107,7 @@ impl ConfigParser {
             } else if key.eq_ignore_ascii_case("include") {
                 if depth < MAX_INCLUDE_DEPTH {
                     for path in self.include_paths(value) {
-                        self.parse_file(&path, depth + 1);
+                        self.parse_file(&path, depth + 1, &current);
                     }
                 }
             } else {
@@ -115,9 +118,9 @@ impl ConfigParser {
         }
     }
 
-    fn parse_file(&mut self, path: &Path, depth: usize) {
+    fn parse_file(&mut self, path: &Path, depth: usize, enclosing: &[usize]) {
         match fs::read_to_string(path) {
-            Ok(contents) => self.parse(&contents, depth),
+            Ok(contents) => self.parse(&contents, depth, enclosing),
             // Like OpenSSH, a missing include is not an error
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => eprintln!("Warning: could not read {}: {}", path.display(), e),
@@ -273,7 +276,7 @@ impl SshConfigStore {
             .with_context(|| format!("Could not read SSH config at {}", config_path.display()))?;
 
         let mut parser = ConfigParser::new(&home);
-        parser.parse(&contents, 0);
+        parser.parse(&contents, 0, &[]);
 
         let groups = create_ssh_groups(db, parser.hosts);
 
@@ -366,7 +369,7 @@ mod tests {
 
     fn parse(contents: &str) -> Vec<ParsedHost> {
         let mut parser = ConfigParser::new(Path::new("/nonexistent"));
-        parser.parse(contents, 0);
+        parser.parse(contents, 0, &[]);
         parser.hosts
     }
 
@@ -523,12 +526,44 @@ Host epsilon
         parser.parse(
             "Include config.d/*\nInclude ~/.ssh/extra missing\nInclude loop\nHost main\n",
             0,
+            &[],
         );
 
         assert_eq!(
             names(&parser.hosts),
             vec!["alpha", "bravo", "extra", "looped", "main"]
         );
+
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn test_parse_include_inside_host_block() {
+        let home = temp_home();
+        let ssh_dir = home.join(".ssh");
+        fs::write(
+            ssh_dir.join("web.conf"),
+            "User deploy\nHost other\nPort 2222\n",
+        )
+        .unwrap();
+
+        let mut parser = ConfigParser::new(&home);
+        parser.parse(
+            "Host web\n    Include web.conf\n    HostName 192.0.2.1\nMatch all\n    Include web.conf\n",
+            0,
+            &[],
+        );
+
+        let web = &parser.hosts[0];
+        assert_eq!(web.name, "web");
+        // Options at the top of the include apply to the enclosing host, and
+        // the enclosing block continues after it
+        assert_eq!(web.config.get("User"), Some("deploy"));
+        assert_eq!(web.config.get("HostName"), Some("192.0.2.1"));
+        assert_eq!(web.config.get("Port"), None);
+        assert_eq!(parser.hosts[1].config.get("Port"), Some("2222"));
+        // Inside `Match` the leading options go nowhere
+        assert_eq!(web.config.iter().count(), 2);
 
         let _ = fs::remove_dir_all(home);
     }
