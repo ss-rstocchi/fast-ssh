@@ -3,7 +3,7 @@ use crate::{
     app::{App, AppState},
     get_theme,
     searcher::highlight_indices,
-    ssh_config_store::SshGroupItem,
+    ssh_config_store::{SshGroupItem, RECENTS_GROUP},
 };
 use chrono::{DateTime, Local};
 use std::{
@@ -26,11 +26,16 @@ impl HostsWidget {
         let theme = get_theme();
         let block = block::new(" Hosts ");
         let header = HostsWidget::create_header();
-        // In search mode results span all groups, so show "group/name" to disambiguate
         let search_query = match app.state {
             AppState::Searching => Some(app.searcher.search_string()),
             AppState::Normal => None,
         };
+        // Search results and Recents span all groups, so show "group/name"
+        // to disambiguate
+        let show_full_name = search_query.is_some()
+            || app
+                .get_selected_group()
+                .is_some_and(|group| group.name == RECENTS_GROUP);
 
         let total = app.items_len();
         let capacity = HostsWidget::visible_capacity(area);
@@ -52,7 +57,7 @@ impl HostsWidget {
 
         let end = (start + capacity).min(total);
         let items = app.get_items_range(start, end);
-        let rows = HostsWidget::create_rows_from_items(&items, search_query);
+        let rows = HostsWidget::create_rows_from_items(&items, search_query, show_full_name);
 
         // Rows are pre-sliced, so the table renders them from offset 0.
         let mut state = TableState::default();
@@ -101,6 +106,7 @@ impl HostsWidget {
     fn create_rows_from_items(
         items: &[&SshGroupItem],
         search_query: Option<&str>,
+        show_full_name: bool,
     ) -> Vec<Row<'static>> {
         let style = Style::default();
         items
@@ -109,7 +115,7 @@ impl HostsWidget {
                 let timestamp_str = HostsWidget::format_last_used_date(item);
 
                 let cells = [
-                    HostsWidget::host_name_cell(item, search_query),
+                    HostsWidget::host_name_cell(item, search_query, show_full_name),
                     Cell::from(timestamp_str).style(style),
                     Cell::from(item.connection_count.to_string()).style(style),
                 ];
@@ -120,8 +126,12 @@ impl HostsWidget {
     }
 
     /// Host cell with the characters matched by the search query highlighted.
-    fn host_name_cell(item: &SshGroupItem, search_query: Option<&str>) -> Cell<'static> {
-        let displayed = if search_query.is_some() {
+    fn host_name_cell(
+        item: &SshGroupItem,
+        search_query: Option<&str>,
+        show_full_name: bool,
+    ) -> Cell<'static> {
+        let displayed = if show_full_name {
             &item.full_name
         } else {
             &item.name
