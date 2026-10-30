@@ -217,7 +217,9 @@ fn lowercase_tokens(query: &str) -> Vec<Vec<char>> {
 }
 
 /// Returns `(group index, item index)` pairs for every host matching `query`,
-/// ranked best-first. Recents are excluded. An empty query matches every host.
+/// ranked best-first. Recents are excluded. An empty query matches every host,
+/// most frequently/recently used first, so search then Enter reconnects to the
+/// usual host.
 ///
 /// `query` is split on whitespace and every token must match the item's short
 /// name, hostname, user or comment, or its group name, in any order. Each token
@@ -229,17 +231,6 @@ fn lowercase_tokens(query: &str) -> Vec<Vec<char>> {
 /// timestamp used for the frecency bonus.
 pub fn rank_matches(query: &str, groups: &[SshGroup], now: i64) -> Vec<(usize, usize)> {
     let tokens = lowercase_tokens(query);
-
-    if tokens.is_empty() {
-        return groups
-            .iter()
-            .enumerate()
-            .filter(|(_, group)| group.name != RECENTS_GROUP)
-            .flat_map(|(group_idx, group)| {
-                (0..group.items.len()).map(move |item_idx| (group_idx, item_idx))
-            })
-            .collect();
-    }
 
     let mut scored: Vec<(usize, isize, i64, (usize, usize))> = Vec::new();
 
@@ -539,6 +530,34 @@ mod tests {
 
         // Same fuzzy score; the recently used host wins
         assert_eq!(rank_matches("prod", &groups, now), vec![(0, 1), (0, 0)]);
+    }
+
+    #[test]
+    fn test_rank_matches_empty_query_orders_by_frecency() {
+        let now = 1_000_000_000;
+        let groups = vec![
+            make_group("A", vec![make_item("unused", 0), make_item("often", 5)]),
+            make_group(
+                "B",
+                vec![
+                    make_item("also-unused", 0),
+                    SshGroupItem {
+                        last_used: now - 60,
+                        ..make_item("just-now", 1)
+                    },
+                ],
+            ),
+        ];
+
+        // Used hosts first; unused ones keep config order
+        assert_eq!(
+            rank_matches("", &groups, now),
+            vec![(1, 1), (0, 1), (0, 0), (1, 0)]
+        );
+        assert_eq!(
+            rank_matches("  ", &groups, now),
+            rank_matches("", &groups, now)
+        );
     }
 
     #[test]
