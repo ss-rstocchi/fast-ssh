@@ -165,7 +165,8 @@ mod tests {
 
     #[test]
     fn test_theme_deserialize_from_yaml() {
-        let yaml = "text_primary: \"#ff0000\"\ntext_secondary: \"#00ff00\"\nborder_color: \"#0000ff\"";
+        let yaml =
+            "text_primary: \"#ff0000\"\ntext_secondary: \"#00ff00\"\nborder_color: \"#0000ff\"";
         let theme: Theme = serde_yaml::from_str(yaml).expect("Failed to deserialize theme");
         assert_eq!(theme.text_primary(), Color::Rgb(255, 0, 0));
         assert_eq!(theme.text_secondary(), Color::Rgb(0, 255, 0));

@@ -22,11 +22,14 @@ pub fn create_layout(app: &App, frame: &mut Frame<CrosstermBackend<Stdout>>) -> 
         .direction(Direction::Vertical)
         .margin(1)
         .horizontal_margin(4)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(10),
-            Constraint::Length(1),
-        ].as_ref())
+        .constraints(
+            [
+                Constraint::Length(3),
+                Constraint::Min(10),
+                Constraint::Length(1),
+            ]
+            .as_ref(),
+        )
         .split(frame.size());
 
     let chunks_top = Layout::default()

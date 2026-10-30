@@ -31,14 +31,11 @@ impl GroupsWidget {
             titles.rotate_left(app.selected_group);
         }
 
-        let tabs = Tabs::new(titles)
-            .block(block)
-            .select(0)
-            .highlight_style(
-                Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .bg(theme.text_primary()),
-            );
+        let tabs = Tabs::new(titles).block(block).select(0).highlight_style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .bg(theme.text_primary()),
+        );
 
         frame.render_widget(tabs, area);
     }
