@@ -54,7 +54,7 @@ pub struct App {
 impl App {
     pub async fn new() -> Result<App> {
         let db = App::create_or_get_db_file()?;
-        let scs = SshConfigStore::new(&db).await?;
+        let scs = SshConfigStore::new(&db)?;
 
         Ok(App {
             state: AppState::Normal,

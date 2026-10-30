@@ -3,7 +3,6 @@ use crate::{
     ssh_config_store::{SshGroup, SshGroupItem, RECENTS_GROUP},
     widgets::block,
 };
-use ssh_cfg::SshOptionKey;
 use std::io::Stdout;
 use sublime_fuzzy::best_match;
 use tui::{
@@ -181,12 +180,12 @@ fn item_score(token: &str, item: &SshGroupItem) -> Option<isize> {
 
     let hostname = item
         .host_config
-        .get(&SshOptionKey::Hostname)
+        .get("HostName")
         .and_then(|value| best_match(token, value).map(|m| m.score()));
 
     let user = item
         .host_config
-        .get(&SshOptionKey::User)
+        .get("User")
         .and_then(|value| best_match(token, value).map(|m| m.score()));
 
     let comment = item
@@ -261,7 +260,7 @@ mod tests {
             full_name: full_name.to_string(),
             connection_count,
             last_used: 0,
-            host_config: ssh_cfg::SshHostConfig::default(),
+            host_config: Default::default(),
             comment: None,
         }
     }

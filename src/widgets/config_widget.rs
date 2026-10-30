@@ -105,7 +105,7 @@ impl ConfigWidget {
         config.host_config.iter().for_each(|(key, value)| {
             spans.push(Spans::from(vec![
                 Span::styled("  ", Style::default().fg(theme.text_primary())),
-                Span::styled(key.to_string(), Style::default().fg(theme.text_primary())),
+                Span::styled(key, Style::default().fg(theme.text_primary())),
                 Span::styled(" ", Style::default().fg(theme.text_secondary())),
                 Span::styled(value, Style::default().fg(theme.text_secondary())),
             ]));
