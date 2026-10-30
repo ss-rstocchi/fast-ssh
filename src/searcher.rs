@@ -338,10 +338,7 @@ pub fn highlight_indices(query: &str, item: &SshGroupItem) -> Vec<usize> {
 /// group and the char offset of the short name, so the group prefix and the
 /// short name are matched separately, as during ranking.
 fn group_prefix(item: &SshGroupItem) -> (Option<&str>, usize) {
-    match item.full_name.split_once('/') {
-        Some((group, _)) => (Some(group), group.chars().count() + 1),
-        None => (None, 0),
-    }
+    (item.group(), item.name_offset())
 }
 
 /// A hostname, user or comment that a query token ranked by, shown next to the

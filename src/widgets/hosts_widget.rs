@@ -436,10 +436,7 @@ const GROUP_HEADER: &str = "Group";
 /// The group of a grouped host and the char offset of its short name within
 /// `full_name`; `("", 0)` for ungrouped hosts.
 fn split_group(item: &SshGroupItem) -> (&str, usize) {
-    match item.full_name.split_once('/') {
-        Some((group, _)) => (group, group.chars().count() + 1),
-        None => ("", 0),
-    }
+    (item.group().unwrap_or_default(), item.name_offset())
 }
 
 /// Cuts `spans` to `max_width` terminal columns, ending with `…` when

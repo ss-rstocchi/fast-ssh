@@ -64,6 +64,8 @@ Host RaspberryPi/Raspbian               # Defined group and name of host for use
 
 Fast-SSH has a group system. This allows you to sort your servers, for example, by project, mission or client. To make some groups, it's simple, just define your `Host` as `Group/ServerName` (see full configuration in above example) and your groups will be displayed in FastSSH. You can now select a group and display only the servers defined in that group. Now all you have to do is launch Fast-SSH, select your service and press enter to connect.
 
+Hosts without a group are listed under `Others`, and the most recently used hosts under `Recents`. Both names are reserved: a host named `Others/server` joins the ungrouped hosts, and a `Recents/` group is left out of search, so pick other group names. A host named `/server` (empty group) is treated as ungrouped.
+
 ## File Database
 
 A file database is stored at `$XDG_CONFIG_HOME/FastSSH/db.ron` ( `%APPDATA%/FastSSH/db.ron` for Windows ).

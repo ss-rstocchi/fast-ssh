@@ -255,6 +255,22 @@ pub struct SshGroupItem {
     pub comment: Option<String>,
 }
 
+impl SshGroupItem {
+    /// Group named in `full_name` (`group/name`), `None` for ungrouped hosts
+    /// and an empty group as in `/name`.
+    pub fn group(&self) -> Option<&str> {
+        self.full_name
+            .split_once('/')
+            .map(|(group, _)| group)
+            .filter(|group| !group.is_empty())
+    }
+
+    /// Char offset of the short `name` within `full_name`.
+    pub fn name_offset(&self) -> usize {
+        self.full_name.chars().count() - self.name.chars().count()
+    }
+}
+
 #[derive(Debug)]
 pub struct SshGroup {
     pub name: String,
@@ -306,6 +322,8 @@ fn create_ssh_groups(db: &FileDatabase, hosts: Vec<ParsedHost>) -> Vec<SshGroup>
         });
 
         let (group_name, item_name) = match host.name.split_once('/') {
+            // `Host /name` has no group to show
+            Some(("", item_name)) => (OTHERS_GROUP, item_name),
             Some((group_name, item_name)) => (group_name, item_name),
             None => (OTHERS_GROUP, host.name.as_str()),
         };
@@ -566,6 +584,20 @@ Host epsilon
         assert_eq!(web.config.iter().count(), 2);
 
         let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn test_empty_group_is_ungrouped() {
+        let item = SshGroupItem {
+            name: "foo".to_string(),
+            full_name: "/foo".to_string(),
+            connection_count: 0,
+            last_used: 0,
+            host_config: HostConfig::default(),
+            comment: None,
+        };
+        assert_eq!(item.group(), None);
+        assert_eq!(item.name_offset(), 1);
     }
 
     #[test]

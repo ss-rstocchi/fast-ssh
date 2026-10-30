@@ -114,11 +114,10 @@ impl ConfigWidget {
         let theme = get_theme();
         let mut spans = Vec::new();
 
-        // Use split_once for safer string parsing
-        if let Some((group, host)) = config.full_name.split_once('/') {
+        if let Some(group) = config.group() {
             spans.push(Spans::from(vec![
                 Span::styled("Host ", Style::default().fg(theme.text_primary())),
-                Span::styled(host, Style::default().fg(theme.text_secondary())),
+                Span::styled(&config.name, Style::default().fg(theme.text_secondary())),
             ]));
             spans.push(Spans::from(vec![
                 Span::styled("  Group ", Style::default().fg(theme.text_primary())),
