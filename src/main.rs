@@ -164,10 +164,8 @@ fn run_command(mut command: Command) -> Result<()> {
 fn draw(terminal: &mut TerminalGuard, app: &mut App) -> Result<()> {
     app.clamp_host_selection();
 
-    let mut hosts_area_height: u16 = 0;
     terminal.terminal().draw(|frame| {
         let layout = create_layout(app, frame);
-        hosts_area_height = layout.hosts_area.height;
 
         match app.state {
             AppState::Normal => GroupsWidget::render(app, layout.groups_area, frame),
@@ -177,16 +175,19 @@ fn draw(terminal: &mut TerminalGuard, app: &mut App) -> Result<()> {
             }
         };
 
-        HelpWidget::render(layout.help_area, frame);
-        HostsWidget::render(app, layout.hosts_area, frame);
-        ConfigWidget::render(app, layout.config_area, frame);
-        VersionWidget::render(layout.version_area, frame);
+        if let Some(help_area) = layout.help_area {
+            HelpWidget::render(help_area, frame);
+        }
+        HostsWidget::render(app, layout.hosts_area, layout.dense, frame);
+        if let Some(config_area) = layout.config_area {
+            ConfigWidget::render(app, config_area, frame);
+        }
+        VersionWidget::render(layout.version_area, layout.help_area.is_none(), frame);
 
         if let Some(shortcuts_area) = layout.shortcuts_area {
             ShortcutsWidget::render(shortcuts_area, frame);
         }
     })?;
-    app.hosts_area_height = hosts_area_height;
 
     Ok(())
 }

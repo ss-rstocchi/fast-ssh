@@ -38,7 +38,8 @@ pub struct App {
     pub should_copy_files: bool,
 
     pub config_paragraph_offset: u16,
-    pub hosts_area_height: u16,
+    /// Host rows visible in the hosts table at the last draw
+    pub hosts_visible_rows: usize,
     pub db: FileDatabase,
     pub show_help: bool,
     pub pending_g: bool,
@@ -67,7 +68,7 @@ impl App {
             state: AppState::Normal,
             selected_group: 0,
             config_paragraph_offset: 0,
-            hosts_area_height: 0,
+            hosts_visible_rows: 0,
             hosts_offset: 0,
             scs,
             host_state: TableState::default(),
@@ -349,10 +350,10 @@ impl App {
             return;
         }
 
-        // Derive half-page from actual visible rows: each row takes 2 terminal lines,
-        // with 4 lines overhead (block border + header). Fall back to DEFAULT_HALF_PAGE_SIZE.
-        let half_page = if self.hosts_area_height > 4 {
-            ((self.hosts_area_height as usize - 4) / 2 / 2).max(1)
+        // Half of the rows visible at the last draw; before the first draw,
+        // fall back to DEFAULT_HALF_PAGE_SIZE.
+        let half_page = if self.hosts_visible_rows > 0 {
+            (self.hosts_visible_rows / 2).max(1)
         } else {
             DEFAULT_HALF_PAGE_SIZE
         }
