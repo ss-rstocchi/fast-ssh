@@ -132,12 +132,14 @@ async fn main() -> Result<()> {
             return Ok(());
         }
 
-        // Update database with connection info
-        app.db.save_host_values(
+        // Losing the usage stats must not prevent connecting
+        if let Err(e) = app.db.save_host_values(
             host_name,
             selected_config.connection_count + 1,
             chrono::offset::Local::now().timestamp(),
-        )?;
+        ) {
+            eprintln!("Warning: could not save connection history: {}", e);
+        }
 
         let host_arg = host_name.as_str();
 
