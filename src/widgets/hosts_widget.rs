@@ -172,8 +172,10 @@ impl HostsWidget {
         let end = (start + capacity).min(total);
         let items = app.get_items_range(start, end);
 
+        // Measured over every result, not just the visible page, so the
+        // column keeps its width while scrolling
         let group_width = if show_groups {
-            items
+            app.get_items_range(0, total)
                 .iter()
                 .map(|item| split_group(item).0.width())
                 .max()
