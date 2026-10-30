@@ -114,49 +114,67 @@ async fn main() -> Result<()> {
         None
     };
 
-    if let Some(cmd) = command {
-        // Safely get selected config, exit gracefully if none selected
-        let Some(selected_config) = app.get_selected_item() else {
-            eprintln!("Error: No host selected");
-            return Ok(());
-        };
+    let Some(cmd) = command else {
+        return Ok(());
+    };
 
-        let host_name = &selected_config.full_name;
+    // Safely get selected config, exit gracefully if none selected
+    let Some(selected_config) = app.get_selected_item() else {
+        eprintln!("Error: No host selected");
+        return Ok(());
+    };
 
-        // A leading '-' would be parsed as an ssh/sftp option, not a hostname
-        if host_name.starts_with('-') {
-            eprintln!(
-                "Error: refusing to connect to host starting with '-': {}",
-                host_name
-            );
-            return Ok(());
-        }
+    let host_name = &selected_config.full_name;
 
-        // Losing the usage stats must not prevent connecting
-        if let Err(e) = app.db.save_host_values(
-            host_name,
-            selected_config.connection_count + 1,
-            chrono::offset::Local::now().timestamp(),
-        ) {
-            eprintln!("Warning: could not save connection history: {}", e);
-        }
-
-        let host_arg = host_name.as_str();
-
-        // Build and execute the command
-        let mut command = Command::new(cmd);
-
-        // Add SSH-specific options
-        if cmd == "ssh" {
-            command
-                .arg("-o")
-                .arg(SSH_CONNECT_TIMEOUT)
-                .arg("-o")
-                .arg(SSH_KEEP_ALIVE_INTERVAL);
-        }
-
-        command.arg(host_arg).spawn()?.wait()?;
+    // A leading '-' would be parsed as an ssh/sftp option, not a hostname
+    if host_name.starts_with('-') {
+        eprintln!(
+            "Error: refusing to connect to host starting with '-': {}",
+            host_name
+        );
+        return Ok(());
     }
 
-    Ok(())
+    // Losing the usage stats must not prevent connecting
+    if let Err(e) = app.db.save_host_values(
+        host_name,
+        selected_config.connection_count + 1,
+        chrono::offset::Local::now().timestamp(),
+    ) {
+        eprintln!("Warning: could not save connection history: {}", e);
+    }
+
+    let mut command = Command::new(cmd);
+
+    // Add SSH-specific options
+    if cmd == "ssh" {
+        command
+            .arg("-o")
+            .arg(SSH_CONNECT_TIMEOUT)
+            .arg("-o")
+            .arg(SSH_KEEP_ALIVE_INTERVAL);
+    }
+
+    command.arg(host_name);
+    run_command(command)
+}
+
+/// Replaces this process with `command`, so signals and the exit status go
+/// straight to the user's shell.
+#[cfg(unix)]
+fn run_command(mut command: Command) -> Result<()> {
+    use std::os::unix::process::CommandExt;
+
+    let error = command.exec();
+    Err(anyhow::Error::new(error).context(format!(
+        "Could not run {}",
+        command.get_program().to_string_lossy()
+    )))
+}
+
+/// Runs `command` and exits with its status.
+#[cfg(not(unix))]
+fn run_command(mut command: Command) -> Result<()> {
+    let status = command.spawn()?.wait()?;
+    std::process::exit(status.code().unwrap_or(1));
 }
