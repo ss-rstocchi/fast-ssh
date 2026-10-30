@@ -298,14 +298,7 @@ fn frecency_bonus(item: &SshGroupItem, now: i64) -> isize {
 /// results. A token is highlighted only in the field it ranked by: the short
 /// name or the group prefix, and not at all for hostname/user/comment.
 pub fn highlight_indices(query: &str, item: &SshGroupItem) -> Vec<usize> {
-    // For grouped hosts the displayed name is `group/short-name`; match the
-    // group prefix and the short name separately so the highlighted characters
-    // agree with how ranking scored the item.
-    let (group, offset) = match item.full_name.split_once('/') {
-        Some((group, _)) => (Some(group), group.chars().count() + 1),
-        None => (None, 0),
-    };
-
+    let (group, offset) = group_prefix(item);
     let mut indices = Vec::new();
 
     for token in lowercase_tokens(query) {
@@ -321,6 +314,68 @@ pub fn highlight_indices(query: &str, item: &SshGroupItem) -> Vec<usize> {
     indices.sort_unstable();
     indices.dedup();
     indices
+}
+
+/// For grouped hosts the displayed name is `group/short-name`. Returns the
+/// group and the char offset of the short name, so the group prefix and the
+/// short name are matched separately, as during ranking.
+fn group_prefix(item: &SshGroupItem) -> (Option<&str>, usize) {
+    match item.full_name.split_once('/') {
+        Some((group, _)) => (Some(group), group.chars().count() + 1),
+        None => (None, 0),
+    }
+}
+
+/// A hostname, user or comment that a query token ranked by, shown next to the
+/// host name to explain matches the name itself cannot.
+#[derive(Debug, PartialEq, Eq)]
+pub struct MatchHint<'a> {
+    pub value: &'a str,
+    /// Matched char indices within `value`
+    pub indices: Vec<usize>,
+}
+
+/// One hint per non-name field that some token of `query` ranked by, in
+/// field order.
+pub fn match_hints<'a>(query: &str, item: &'a SshGroupItem) -> Vec<MatchHint<'a>> {
+    let (group, _) = group_prefix(item);
+    let mut hints: Vec<(Field, MatchHint<'a>)> = Vec::new();
+
+    for token in lowercase_tokens(query) {
+        let Some((field, found)) = best_field(&token, item, group) else {
+            continue;
+        };
+        let value = match field {
+            Field::HostName => item.host_config.get("HostName"),
+            Field::User => item.host_config.get("User"),
+            Field::Comment => item.comment.as_deref(),
+            Field::Name | Field::Group => None,
+        };
+        let Some(value) = value else {
+            continue;
+        };
+
+        match hints.iter_mut().find(|(existing, _)| *existing == field) {
+            Some((_, hint)) => hint.indices.extend(found.indices),
+            None => hints.push((
+                field,
+                MatchHint {
+                    value,
+                    indices: found.indices,
+                },
+            )),
+        }
+    }
+
+    hints.sort_by_key(|(field, _)| *field as u8);
+    hints
+        .into_iter()
+        .map(|(_, mut hint)| {
+            hint.indices.sort_unstable();
+            hint.indices.dedup();
+            hint
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -628,6 +683,36 @@ mod tests {
         // name stays plain
         assert!(highlight_indices("db01", &item).is_empty());
         assert_eq!(highlight_indices("db", &item), vec![0, 1]);
+    }
+
+    #[test]
+    fn test_match_hints_explain_non_name_matches() {
+        let mut item = make_item("db-01", 0);
+        item.full_name = "Prod/db-01".to_string();
+        item.host_config.insert("HostName", "10.0.1.5");
+        item.host_config.insert("User", "deploy");
+        item.comment = Some("primary postgres".to_string());
+
+        // Name and group matches need no hint
+        assert!(match_hints("db prod", &item).is_empty());
+
+        assert_eq!(
+            match_hints("postgres 10.0 deploy", &item),
+            vec![
+                MatchHint {
+                    value: "10.0.1.5",
+                    indices: vec![0, 1, 2, 3],
+                },
+                MatchHint {
+                    value: "deploy",
+                    indices: vec![0, 1, 2, 3, 4, 5],
+                },
+                MatchHint {
+                    value: "primary postgres",
+                    indices: (8..16).collect(),
+                },
+            ]
+        );
     }
 
     #[test]

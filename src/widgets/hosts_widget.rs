@@ -2,7 +2,7 @@ use super::block;
 use crate::{
     app::{App, AppState},
     get_theme,
-    searcher::highlight_indices,
+    searcher::{highlight_indices, match_hints},
     ssh_config_store::{SshGroupItem, RECENTS_GROUP},
 };
 use chrono::{DateTime, Local};
@@ -125,7 +125,8 @@ impl HostsWidget {
             .collect::<Vec<Row<'static>>>()
     }
 
-    /// Host cell with the characters matched by the search query highlighted.
+    /// Host cell with the characters matched by the search query highlighted,
+    /// followed by dim hints for matches on hostname, user or comment.
     fn host_name_cell(
         item: &SshGroupItem,
         search_query: Option<&str>,
@@ -141,32 +142,44 @@ impl HostsWidget {
             return Cell::from(displayed.clone());
         };
 
-        let indices = highlight_indices(query, item);
-        if indices.is_empty() {
-            return Cell::from(displayed.clone());
+        let mut spans = HostsWidget::highlighted_spans(
+            displayed,
+            &highlight_indices(query, item),
+            Style::default(),
+        );
+
+        let hint_style = Style::default().add_modifier(Modifier::DIM);
+        for hint in match_hints(query, item) {
+            spans.push(Span::styled(" · ", hint_style));
+            spans.extend(HostsWidget::highlighted_spans(
+                hint.value,
+                &hint.indices,
+                hint_style,
+            ));
         }
 
-        Cell::from(HostsWidget::highlighted_spans(displayed, &indices))
+        Cell::from(Spans::from(spans))
     }
 
-    fn highlighted_spans(name: &str, indices: &[usize]) -> Spans<'static> {
+    /// Splits `text` into runs, styling the chars at `indices` (sorted char
+    /// positions) as matches on top of `base_style`.
+    fn highlighted_spans(text: &str, indices: &[usize], base_style: Style) -> Vec<Span<'static>> {
         let theme = get_theme();
-        let highlight_style = Style::default()
+        let highlight_style = base_style
             .fg(theme.text_primary())
             .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
-        let plain_style = Style::default();
 
         let mut spans = Vec::new();
         let mut run = String::new();
         let mut run_highlighted = false;
 
-        for (idx, ch) in name.chars().enumerate() {
+        for (idx, ch) in text.chars().enumerate() {
             let is_highlighted = indices.binary_search(&idx).is_ok();
             if !run.is_empty() && is_highlighted != run_highlighted {
                 let style = if run_highlighted {
                     highlight_style
                 } else {
-                    plain_style
+                    base_style
                 };
                 spans.push(Span::styled(std::mem::take(&mut run), style));
             }
@@ -178,12 +191,12 @@ impl HostsWidget {
             let style = if run_highlighted {
                 highlight_style
             } else {
-                plain_style
+                base_style
             };
             spans.push(Span::styled(run, style));
         }
 
-        Spans::from(spans)
+        spans
     }
 
     fn format_last_used_date(item: &SshGroupItem) -> String {
