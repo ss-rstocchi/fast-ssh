@@ -9,7 +9,7 @@ use tui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, Paragraph, Wrap},
+    widgets::{Paragraph, Wrap},
     Frame,
 };
 
@@ -21,31 +21,44 @@ impl ConfigWidget {
     pub fn render(app: &App, area: Rect, frame: &mut Frame<CrosstermBackend<Stdout>>) {
         let block = block::new(" Configuration ");
 
-        let paragraph = match app.config_display_mode {
-            ConfigMode::Selected => ConfigWidget::get_paragraph_for_selected_mode(app, block),
-            ConfigMode::Global => ConfigWidget::get_paragraph_for_global_mode(app, block),
+        let lines = match app.config_display_mode {
+            ConfigMode::Selected => ConfigWidget::lines_for_selected_mode(app),
+            ConfigMode::Global => ConfigWidget::lines_for_global_mode(app),
         };
 
-        frame.render_widget(paragraph.scroll((app.config_paragraph_offset, 0)), area);
-    }
-
-    fn get_paragraph_for_global_mode<'a>(app: &'a App, block: Block<'a>) -> Paragraph<'a> {
-        // The global view is static for the whole session, so build it once
-        // instead of re-formatting every host on every frame.
-        let spans = app.global_config_spans.get_or_init(|| {
-            app.get_all_items_except_recents()
-                .into_iter()
-                .flat_map(ConfigWidget::ssh_group_item_to_owned_spans)
-                .collect()
-        });
-
-        Paragraph::new(spans.clone())
+        let paragraph = Paragraph::new(lines)
             .block(block)
             .wrap(Wrap { trim: false })
+            .scroll((app.config_paragraph_offset, 0));
+        frame.render_widget(paragraph, area);
     }
 
-    fn get_paragraph_for_selected_mode<'a>(app: &'a App, block: Block<'a>) -> Paragraph<'a> {
-        let spans = match app.get_selected_item() {
+    fn lines_for_global_mode(app: &App) -> Vec<Spans<'_>> {
+        // The global view is static for the whole session, so build it once
+        // instead of re-formatting every host on every frame. Frames borrow
+        // the cached text rather than copying it.
+        app.global_config_spans
+            .get_or_init(|| {
+                app.get_all_items_except_recents()
+                    .into_iter()
+                    .flat_map(ConfigWidget::ssh_group_item_to_owned_spans)
+                    .collect()
+            })
+            .iter()
+            .map(|spans| {
+                Spans::from(
+                    spans
+                        .0
+                        .iter()
+                        .map(|span| Span::styled(span.content.as_ref(), span.style))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect()
+    }
+
+    fn lines_for_selected_mode(app: &App) -> Vec<Spans<'_>> {
+        match app.get_selected_item() {
             Some(item) => ConfigWidget::ssh_group_item_to_spans(item),
             None => vec![Spans::from(Span::styled(
                 "No item selected.\n",
@@ -53,11 +66,7 @@ impl ConfigWidget {
                     .fg(get_theme().text_secondary())
                     .add_modifier(Modifier::BOLD),
             ))],
-        };
-
-        Paragraph::new(spans)
-            .block(block)
-            .wrap(Wrap { trim: false })
+        }
     }
 
     fn ssh_group_item_to_owned_spans(config: &SshGroupItem) -> Vec<Spans<'static>> {
