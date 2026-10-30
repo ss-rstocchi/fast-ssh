@@ -29,7 +29,11 @@ const MIN_NAME_WIDTH: u16 = 20;
 /// Narrowest useful group column; below it the group goes back into the name
 const MIN_GROUP_WIDTH: u16 = 6;
 const HIGHLIGHT_SYMBOL: &str = ">> ";
-const COLUMN_SPACING: u16 = 1;
+/// Gap between columns when the pane has room, so neighbouring values
+/// (a time and a count) do not run together
+const WIDE_SPACING: u16 = 3;
+/// Gap in narrow panes, where every column counts
+const NARROW_SPACING: u16 = 1;
 
 /// Columns that fit the hosts pane; the host name takes what is left.
 #[derive(Debug, PartialEq, Eq)]
@@ -40,28 +44,32 @@ struct Columns {
     show_date: bool,
     /// `true` for the short `#` count header
     short_count: bool,
+    /// Gap between columns
+    spacing: u16,
 }
 
 impl Columns {
     /// `group_width` is the widest group name to show in its own column, 0
     /// for none. As the pane narrows, drops the long count header, then the
-    /// date, then shrinks the group column; the name keeps at least
-    /// `MIN_NAME_WIDTH` while anything else is shown.
+    /// date, then narrows the gaps and tries again, then shrinks the group
+    /// column; the name keeps at least `MIN_NAME_WIDTH` while anything else
+    /// is shown.
     fn fit(area: Rect, group_width: u16) -> Columns {
         let inner = area.width.saturating_sub(2 + HIGHLIGHT_SYMBOL.len() as u16);
-        let columns = |group_width: u16, show_date: bool, short_count: bool| {
-            let mut fixed = Columns::count_width(short_count) + COLUMN_SPACING;
+        let columns = |group_width: u16, show_date: bool, short_count: bool, spacing: u16| {
+            let mut fixed = Columns::count_width(short_count) + spacing;
             if show_date {
-                fixed += DATE_WIDTH + COLUMN_SPACING;
+                fixed += DATE_WIDTH + spacing;
             }
             if group_width > 0 {
-                fixed += group_width + COLUMN_SPACING;
+                fixed += group_width + spacing;
             }
             Columns {
                 name_width: inner.saturating_sub(fixed),
                 group_width,
                 show_date,
                 short_count,
+                spacing,
             }
         };
 
@@ -70,10 +78,11 @@ impl Columns {
             (true, true, MIN_NAME_WIDTH),
             (false, true, MIN_NAME_WIDTH),
         ];
-        let fitting = candidates
+        let fitting = [WIDE_SPACING, NARROW_SPACING]
             .into_iter()
-            .find_map(|(show_date, short_count, min)| {
-                let candidate = columns(group_width, show_date, short_count);
+            .flat_map(|spacing| candidates.map(|candidate| (candidate, spacing)))
+            .find_map(|((show_date, short_count, min), spacing)| {
+                let candidate = columns(group_width, show_date, short_count, spacing);
                 (candidate.name_width >= min).then_some(candidate)
             });
         if let Some(fitting) = fitting {
@@ -81,12 +90,12 @@ impl Columns {
         }
 
         // Shrink the group column, or drop it when too narrow to be useful
-        let without_group = columns(0, false, true);
+        let without_group = columns(0, false, true, NARROW_SPACING);
         let room = without_group
             .name_width
-            .saturating_sub(MIN_NAME_WIDTH + COLUMN_SPACING);
+            .saturating_sub(MIN_NAME_WIDTH + NARROW_SPACING);
         if group_width > 0 && room >= MIN_GROUP_WIDTH {
-            columns(room.min(group_width), false, true)
+            columns(room.min(group_width), false, true, NARROW_SPACING)
         } else {
             without_group
         }
@@ -98,6 +107,12 @@ impl Columns {
         } else {
             9
         }
+    }
+
+    /// `text` right-aligned in the count column, so counts line up by digit
+    fn align_count(&self, text: &str) -> String {
+        let width = Columns::count_width(self.short_count) as usize;
+        format!("{text:>width$}")
     }
 
     fn widths(&self) -> Vec<Constraint> {
@@ -162,7 +177,14 @@ impl HostsWidget {
                 .iter()
                 .map(|item| split_group(item).0.width())
                 .max()
-                .unwrap_or(0) as u16
+                // Never narrower than the "Group" header
+                .map_or(0, |width| {
+                    if width == 0 {
+                        0
+                    } else {
+                        width.max(GROUP_HEADER.width())
+                    }
+                }) as u16
         } else {
             0
         };
@@ -193,7 +215,7 @@ impl HostsWidget {
             .highlight_style(Style::default().fg(theme.text_primary()))
             .style(Style::default().fg(theme.text_secondary()))
             .highlight_symbol(HIGHLIGHT_SYMBOL)
-            .column_spacing(COLUMN_SPACING)
+            .column_spacing(columns.spacing)
             .widths(&widths);
 
         frame.render_stateful_widget(t, area, &mut state);
@@ -215,19 +237,22 @@ impl HostsWidget {
         let theme = get_theme();
         let mut headers = vec!["Host"];
         if columns.group_width > 0 {
-            headers.push("Group");
+            headers.push(GROUP_HEADER);
         }
         if columns.show_date {
             headers.push("Last Used");
         }
-        headers.push(if columns.short_count {
+        let count_header = if columns.short_count {
             "#"
         } else {
             "# of Conn"
-        });
+        };
 
+        // The count column is right-aligned, like its numbers
         let header_cells = headers
             .into_iter()
+            .map(str::to_string)
+            .chain([columns.align_count(count_header)])
             .map(|h| Cell::from(h).style(Style::default().fg(theme.text_secondary())));
 
         Row::new(header_cells)
@@ -303,7 +328,10 @@ impl HostsWidget {
                 if columns.show_date {
                     cells.push(Cell::from(HostsWidget::format_last_used_date(item)).style(style));
                 }
-                cells.push(Cell::from(item.connection_count.to_string()).style(style));
+                cells.push(
+                    Cell::from(columns.align_count(&item.connection_count.to_string()))
+                        .style(style),
+                );
 
                 Row::new(cells).height(1).bottom_margin(u16::from(!dense))
             })
@@ -401,6 +429,7 @@ impl HostsWidget {
 }
 
 const SEPARATOR: &str = " · ";
+const GROUP_HEADER: &str = "Group";
 
 /// The group of a grouped host and the char offset of its short name within
 /// `full_name`; `("", 0)` for ungrouped hosts.
@@ -478,18 +507,22 @@ mod tests {
                 columns.group_width,
                 columns.show_date,
                 columns.short_count,
+                columns.spacing,
             )
         };
 
-        assert_eq!(fit(80, 0), (50, 0, true, false));
-        assert_eq!(fit(48, 0), (23, 0, true, true));
-        assert_eq!(fit(40, 0), (30, 0, false, true));
+        // Wide gaps while the name keeps its minimum width
+        assert_eq!(fit(80, 0), (46, 0, true, false, 3));
+        assert_eq!(fit(52, 0), (23, 0, true, true, 3));
+        assert_eq!(fit(44, 0), (32, 0, false, true, 3));
+        assert_eq!(fit(40, 0), (28, 0, false, true, 3));
 
         // The full group column wins over the date
-        assert_eq!(fit(100, 18), (51, 18, true, false));
-        assert_eq!(fit(60, 18), (31, 18, false, true));
-        // Then the group column shrinks, then it is dropped
-        assert_eq!(fit(45, 18), (20, 14, false, true));
-        assert_eq!(fit(35, 18), (25, 0, false, true));
+        assert_eq!(fit(100, 18), (45, 18, true, false, 3));
+        assert_eq!(fit(60, 18), (27, 18, false, true, 3));
+        // Then the gaps narrow, the group column shrinks, then it is dropped
+        assert_eq!(fit(52, 18), (23, 18, false, true, 1));
+        assert_eq!(fit(45, 18), (20, 14, false, true, 1));
+        assert_eq!(fit(35, 18), (25, 0, false, true, 1));
     }
 }
