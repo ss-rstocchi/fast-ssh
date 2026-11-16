@@ -24,8 +24,11 @@ use widgets::{
     hosts_widget::HostsWidget, shortcuts_widget::ShortcutsWidget, version_widget::VersionWidget,
 };
 
-// SSH connection constants
-const SSH_CONNECT_TIMEOUT: &str = "ConnectTimeout=10";
+// SSH connection constants. `-o` beats ~/.ssh/config, so these are the
+// effective values. ConnectTimeout also bounds the banner exchange: 10 s was
+// too short through a corporate proxy plus a ProxyJump ("Connection timed out
+// during banner exchange ... port 65535").
+const SSH_CONNECT_TIMEOUT: &str = "ConnectTimeout=120";
 const SSH_KEEP_ALIVE_INTERVAL: &str = "ServerAliveInterval=5";
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
